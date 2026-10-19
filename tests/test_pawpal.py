@@ -459,3 +459,73 @@ def test_task_rejects_unknown_priority():
 def test_task_rejects_unknown_frequency():
     with pytest.raises(ValueError):
         Task("Walk", 30, frequency="monthly")
+
+
+# --- Next available slot -----------------------------------------------------
+
+def slot_scheduler(*times_and_durations):
+    """Scheduler whose plan holds one timed task per (time, minutes) pair."""
+    pet = Pet("Biscuit", "dog")
+    for hhmm, minutes in times_and_durations:
+        pet.add_task(Task(f"Task {hhmm}", minutes, time=hhmm, due_date=DAY))
+    owner = make_owner(pet)
+    owner.available_minutes = 1440
+    return Scheduler(owner, day=DAY)
+
+
+def test_next_slot_on_empty_day_is_day_start():
+    scheduler = slot_scheduler()
+
+    assert scheduler.find_next_available_slot(30) == "07:00"
+    assert scheduler.find_next_available_slot(30, day_start="09:15") == "09:15"
+
+
+def test_next_slot_finds_first_gap_big_enough():
+    scheduler = slot_scheduler(("07:00", 60), ("08:30", 30), ("10:00", 15))  # gaps: 08:00-08:30, 09:00-10:00
+
+    assert scheduler.find_next_available_slot(30) == "08:00"  # exactly fills the first gap
+    assert scheduler.find_next_available_slot(45) == "09:00"  # first gap too small
+    assert scheduler.find_next_available_slot(90) == "10:15"  # only room after the last task
+
+
+def test_next_slot_ignores_untimed_completed_and_unscheduled_tasks():
+    pet = Pet("Biscuit", "dog")
+    done = Task("Done", 60, time="07:00", due_date=DAY)
+    done.mark_complete()
+    pet.add_task(done)
+    pet.add_task(Task("Untimed", 60, due_date=DAY))
+    pet.add_task(Task("Tomorrow", 60, time="07:00", due_date=DAY + timedelta(days=1)))
+    scheduler = Scheduler(make_owner(pet), day=DAY)
+
+    assert scheduler.find_next_available_slot(30) == "07:00"
+
+
+def test_next_slot_returns_none_when_no_room_left():
+    scheduler = slot_scheduler(("07:00", 600), ("17:00", 210))  # back to back; only 20:30-21:00 free
+
+    assert scheduler.find_next_available_slot(30) == "20:30"  # ends exactly at day_end
+    assert scheduler.find_next_available_slot(31) is None
+    assert slot_scheduler(("07:00", 840)).find_next_available_slot(5) is None  # fully booked
+
+
+def test_next_slot_rejects_bad_input():
+    scheduler = slot_scheduler()
+
+    with pytest.raises(ValueError):
+        scheduler.find_next_available_slot(0)
+    with pytest.raises(ValueError):
+        scheduler.find_next_available_slot(30, day_start="7:00")
+
+
+def test_explain_plan_suggests_a_new_time_for_each_conflict():
+    pet = Pet("Biscuit", "dog")
+    pet.add_task(Task("Walk", 30, "high", time="07:30", due_date=DAY))      # 07:30-08:00
+    pet.add_task(Task("Ear drops", 5, "high", time="07:45", due_date=DAY))
+    pet.add_task(Task("Breakfast", 60, "high", time="07:00", due_date=DAY))  # 07:00-08:00, clashes too
+    scheduler = Scheduler(make_owner(pet), day=DAY)
+
+    text = scheduler.explain_plan(scheduler.generate_plan())
+
+    # Walk and Ear drops both start inside Breakfast; Ear drops also inside Walk.
+    assert "Try moving Walk to 08:00." in text
+    assert text.count("Try moving Ear drops to 08:00.") == 2

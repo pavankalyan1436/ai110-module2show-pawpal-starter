@@ -10,6 +10,7 @@ You are building **PawPal+**, a Streamlit app that helps a pet owner plan care t
 | **Filtering** | Shows tasks for one pet (by id or case-insensitive name), by completion status, and/or due on or before a date. | `Scheduler.filter_tasks()` |
 | **Daily / weekly recurrence** | Completing a recurring task adds its next occurrence, 1 or 7 days after the due date or the completion day, whichever is later. Completing twice does nothing. | `Scheduler.mark_task_complete()` → `Pet.complete_task()` → `Task.next_occurrence()` |
 | **Overlap conflict warnings** | Flags every pair of timed tasks whose time ranges overlap (back-to-back is fine). Completed and untimed tasks are ignored; `same_day=True` treats the whole plan as today so overdue tasks are checked too. | `Task.overlaps()`, `Scheduler.conflicting_pairs()`, `Scheduler.detect_conflicts()` |
+| **Next available slot** | Finds the earliest `HH:MM` (07:00–21:00 by default) where a task of a given length fits without overlapping today's timed tasks, or `None` if there's no room. Used to suggest a new time for each conflict, e.g. "Try moving Ear drops to 07:00." | `Scheduler.find_next_available_slot()` |
 | **Time-budget planning with skip reasons** | Picks today's and overdue tasks by priority until `available_minutes` runs out, skips what doesn't fit with a reason, and keeps trying smaller tasks. | `Scheduler.generate_plan()` → `Plan`, `Scheduler.explain_plan()` |
 | **Input validation** | Rejects non-positive durations, unknown priorities/frequencies, and times that aren't zero-padded `HH:MM`. | `Task.__post_init__()` |
 
@@ -97,11 +98,11 @@ Start the app with `streamlit run app.py`.
 
 - **Sorting:** the schedule is chosen by priority but shown by start time, with untimed tasks at the bottom as "Anytime".
 - **Skipped tasks:** tasks that don't fit the time budget are listed under a **Skipped** expander with the reason, e.g. "not enough time (needs 60 min, 0 min left)".
-- **Conflict warnings:** each overlap gets its own warning, e.g. "⚠️ Morning walk (Biscuit) overlaps Ear drops (Luna) at 07:45. Consider moving one."
+- **Conflict warnings:** each overlap gets its own warning, e.g. "⚠️ Morning walk (Biscuit) overlaps Ear drops (Luna) at 07:45. Try moving Ear drops to 07:00." The suggested time is the earliest free slot that fits the task.
 
 ### CLI demo
 
-`python main.py` runs the same scenario in the terminal: it lists the tasks as added, sorted by time, and filtered to one pet, then prints the schedule, the plan explanation, conflicts, and a recurring task being completed. Example output (dates depend on the day you run it):
+`python main.py` runs the same scenario in the terminal: it lists the tasks as added, sorted by time, and filtered to one pet, then prints the schedule, the plan explanation (with a suggested time for each conflict), conflicts, the next free slot for a few task lengths, and a recurring task being completed. Example output (dates depend on the day you run it):
 
 ```
 All tasks (as added)
@@ -164,10 +165,17 @@ Skipped:
 
 Warnings:
   Conflict: Morning walk (Biscuit, 07:30-08:00) overlaps Ear drops (Luna, 07:45-07:50)
+    Try moving Ear drops to 07:00.
 
 Conflict check (today's incomplete tasks)
 -----------------------------------------
   Conflict: Morning walk (Biscuit, 07:30-08:00) overlaps Ear drops (Luna, 07:45-07:50)
+
+Next available slot in today's plan (07:00-21:00)
+-------------------------------------------------
+   30-min task: 7:00 AM
+   60-min task: 9:05 AM
+  600-min task: no room today
 
 Completed 'Morning walk' for Biscuit.
 Next 'Morning walk' is due 2026-10-20.
@@ -194,14 +202,15 @@ pytest
 pytest --cov
 ```
 
-The 46 tests in `tests/test_pawpal.py` cover sorting (time order, tie-breaks), filtering, plan generation (exact fit, skip-and-continue, overdue/future/completed tasks, empty inputs, zero budget), recurrence (daily, weekly, one-off, completing twice, early and late completion, month/year rollover), conflict detection (overlaps, back-to-back, same start time, three-way, other days, `same_day`), and input validation. Scheduling tests use fixed dates so they don't depend on when they run.
+The 52 tests in `tests/test_pawpal.py` cover sorting (time order, tie-breaks), filtering, plan generation (exact fit, skip-and-continue, overdue/future/completed tasks, empty inputs, zero budget), recurrence (daily, weekly, one-off, completing twice, early and late completion, month/year rollover), conflict detection (overlaps, back-to-back, same start time, three-way, other days, `same_day`), finding the next available slot (empty day, gaps between tasks, exact fit at day end, no room left, ignored tasks, suggestions in the plan explanation), and input validation. Scheduling tests use fixed dates so they don't depend on when they run.
 
 Sample test output:
 
 ```
-tests/test_pawpal.py ..............................................      [100%]
+tests/test_pawpal.py ................................................... [ 98%]
+.                                                                        [100%]
 
-============================== 46 passed in 0.02s ==============================
+============================== 52 passed in 0.02s ==============================
 ```
 
 ## 📐 Smarter Scheduling

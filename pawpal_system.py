@@ -20,6 +20,12 @@ def _new_id() -> str:
     return uuid4().hex
 
 
+def _to_minutes(hhmm: str) -> int:
+    """Turn "HH:MM" into minutes since midnight."""
+    hours, minutes = hhmm.split(":")
+    return int(hours) * 60 + int(minutes)
+
+
 def _format_minutes(minutes: int) -> str:
     """Turn minutes since midnight into "HH:MM"."""
     return f"{minutes // 60:02d}:{minutes % 60:02d}"
@@ -65,10 +71,7 @@ class Task:
     @property
     def start_minutes(self) -> Optional[int]:
         """Start time as minutes since midnight, or None if untimed."""
-        if self.time is None:
-            return None
-        hours, minutes = self.time.split(":")
-        return int(hours) * 60 + int(minutes)
+        return None if self.time is None else _to_minutes(self.time)
 
     @property
     def end_minutes(self) -> Optional[int]:
@@ -300,6 +303,43 @@ class Scheduler:
             and first[1].overlaps(second[1])
         ]
 
+    def find_next_available_slot(
+        self,
+        duration_minutes: int,
+        day_start: str = "07:00",
+        day_end: str = "21:00",
+        tasks: Optional[list[tuple[Pet, Task]]] = None,
+    ) -> Optional[str]:
+        """Return the earliest "HH:MM" where a task of this length fits, or None.
+
+        The slot must start at or after day_start, end by day_end, and not
+        overlap any busy task (touching ends are fine). Busy tasks are the
+        timed, incomplete tasks in `tasks`, which defaults to today's plan
+        (generate_plan().scheduled). To find a new time for a task, pass the
+        plan without that task so its current slot doesn't block it.
+        """
+        if duration_minutes <= 0:
+            raise ValueError(f"duration_minutes must be positive, got {duration_minutes!r}")
+        for bound in (day_start, day_end):
+            if not TIME_PATTERN.match(bound):
+                raise ValueError(f'day bounds must be zero-padded "HH:MM", got {bound!r}')
+        if tasks is None:
+            tasks = self.generate_plan().scheduled
+
+        busy = sorted(
+            (t.start_minutes, t.end_minutes)
+            for _, t in tasks
+            if t.time is not None and not t.completed
+        )
+        candidate = _to_minutes(day_start)
+        for start, end in busy:
+            if start - candidate >= duration_minutes:
+                break  # the gap before this task is big enough
+            candidate = max(candidate, end)
+        if candidate + duration_minutes > _to_minutes(day_end):
+            return None
+        return _format_minutes(candidate)
+
     @staticmethod
     def _describe(pet: Pet, task: Task) -> str:
         """Format a timed task as "Title (Pet, HH:MM-HH:MM)" for warnings."""
@@ -332,7 +372,16 @@ class Scheduler:
         else:
             lines.append("  (nothing skipped)")
 
-        conflicts = self.detect_conflicts(plan.scheduled, same_day=True)
-        if conflicts:
-            lines += ["", "Warnings:"] + [f"  {c}" for c in conflicts]
+        pairs = self.conflicting_pairs(plan.scheduled, same_day=True)
+        if pairs:
+            lines += ["", "Warnings:"]
+        for (p1, t1), (p2, t2) in pairs:
+            lines.append(f"  Conflict: {self._describe(p1, t1)} overlaps {self._describe(p2, t2)}")
+            # Suggest moving the later task; its own slot shouldn't block it.
+            others = [(p, t) for p, t in plan.scheduled if t is not t2]
+            slot = self.find_next_available_slot(t2.duration_minutes, tasks=others)
+            lines.append(
+                f"    Try moving {t2.title} to {slot}." if slot
+                else f"    No free {t2.duration_minutes}-min slot today for {t2.title}."
+            )
         return "\n".join(lines)

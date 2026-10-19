@@ -64,6 +64,7 @@ classDiagram
         +mark_task_complete(pet_id: str, task_id: str) Optional~Task~
         +detect_conflicts(tasks: list~PetTask~, same_day: bool = False) list~str~
         +conflicting_pairs(tasks: list~PetTask~, same_day: bool = False) list~tuple~
+        +find_next_available_slot(duration_minutes: int, day_start: str = "07:00", day_end: str = "21:00", tasks: list~PetTask~) Optional~str~
         +explain_plan(plan: Plan) str
         -_describe(pet: Pet, task: Task)$ str
     }
@@ -75,10 +76,10 @@ classDiagram
     Scheduler "1" --> "1" Owner : reads get_all_tasks() / get_pet()
     Scheduler ..> Pet : mark_task_complete() calls complete_task()
     Scheduler ..> Task : conflicting_pairs() calls overlaps()
-    Scheduler ..> Plan : generate_plan() builds / explain_plan() reads
+    Scheduler ..> Plan : generate_plan() builds / explain_plan() reads<br>find_next_available_slot() checks scheduled
     Plan o-- "*" Pet : in scheduled / skipped pairs
     Plan o-- "*" Task : in scheduled / skipped pairs
 
     note for Task "Validated on creation: duration_minutes > 0, priority in high/medium/low,<br>frequency in once/daily/weekly, time is zero-padded HH:MM or None.<br>start_minutes / end_minutes are read-only properties (minutes since midnight).<br>Known limitation: tasks running past midnight are not checked for overlaps."
-    note for Scheduler "generate_plan(): incomplete tasks due on or before day, picked by priority<br>(shorter first on ties) within available_minutes, returned in time order.<br>conflicting_pairs(): skips completed and untimed tasks; compares only tasks<br>with the same due_date unless same_day=True (used for plan.scheduled,<br>where overdue tasks happen today). detect_conflicts() formats the pairs."
+    note for Scheduler "generate_plan(): incomplete tasks due on or before day, picked by priority<br>(shorter first on ties) within available_minutes, returned in time order.<br>conflicting_pairs(): skips completed and untimed tasks; compares only tasks<br>with the same due_date unless same_day=True (used for plan.scheduled,<br>where overdue tasks happen today). detect_conflicts() formats the pairs.<br>find_next_available_slot(): earliest HH:MM between day_start and day_end<br>that fits without overlapping timed tasks (default: today's plan), or None.<br>explain_plan() and the app use it to suggest a new time for the later task<br>in each conflict, leaving that task out so its own slot doesn't block it."
     note for Plan "skipped holds (Pet, Task, reason) tuples"

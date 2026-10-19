@@ -95,6 +95,13 @@ def main() -> None:
         print(f"  {warning}")
     print()
 
+    print("Next available slot in today's plan (07:00-21:00)")
+    print("-------------------------------------------------")
+    for minutes in (30, 60, 600):
+        slot = scheduler.find_next_available_slot(minutes)
+        print(f"  {minutes:>3}-min task: {format_time(slot) if slot else 'no room today'}")
+    print()
+
     next_walk = scheduler.mark_task_complete(biscuit.id, walk.id)
     print(f"Completed '{walk.title}' for {biscuit.name}.")
     if next_walk is not None:

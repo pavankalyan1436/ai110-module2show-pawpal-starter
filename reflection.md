@@ -66,7 +66,7 @@ I didn't accept AI suggestions wholesale. The design review gave 12 suggestions 
 
 Testing in the browser caught a bug the AI's automated checks missed: my start times weren't being saved. The empty time box showed `08:00` as grey placeholder text, which looked like a real value. Switching to a time picker fixed it.
 
-I verified the AI's work by running `main.py` and checking the output by hand (scheduled tasks add up to exactly 90 of 90 minutes, the 60-minute grooming was correctly skipped, and the completed daily walk reappeared due tomorrow), by testing the app in the browser, and by running `pytest` (46 passed).
+I verified the AI's work by running `main.py` and checking the output by hand (scheduled tasks add up to exactly 90 of 90 minutes, the 60-minute grooming was correctly skipped, and the completed daily walk reappeared due tomorrow), by testing the app in the browser, and by running `pytest` (52 passed).
 
 ---
 
@@ -74,13 +74,13 @@ I verified the AI's work by running `main.py` and checking the output by hand (s
 
 **a. What you tested**
 
-My 46 tests cover sorting (chronological order, untimed last, priority tie-breaks), filtering (by pet, status, and due date), recurrence (daily → tomorrow, weekly → +7 days, one-time tasks don't repeat, no duplicates on double-complete, Dec 31 → Jan 1 rollover), conflict detection (same start time, overlapping durations, three-way overlaps, back-to-back is not a conflict), `generate_plan` (exact fit, skip-and-continue, overdue included, future and completed excluded, empty inputs), and input validation. These matter because they're what a pet owner relies on — a missed recurring medication or a hidden conflict would be a real problem.
+My 52 tests cover sorting (chronological order, untimed last, priority tie-breaks), filtering (by pet, status, and due date), recurrence (daily → tomorrow, weekly → +7 days, one-time tasks don't repeat, no duplicates on double-complete, Dec 31 → Jan 1 rollover), conflict detection (same start time, overlapping durations, three-way overlaps, back-to-back is not a conflict), `generate_plan` (exact fit, skip-and-continue, overdue included, future and completed excluded, empty inputs), and input validation. These matter because they're what a pet owner relies on — a missed recurring medication or a hidden conflict would be a real problem.
 
 Testing found real bugs. A negative duration added time back to the budget, so an 80-minute task fit into a 30-minute day; I fixed it by rejecting durations ≤ 0. Also, a completed daily walk was flagged as conflicting with tomorrow's copy; I fixed `detect_conflicts` to skip completed tasks and compare only same-day tasks, and then made sure overdue tasks scheduled today are still checked against today's tasks.
 
 **b. Confidence**
 
-4/5. All 46 tests pass and I checked the demo output by hand. I'm not at 5 because the tests cover the logic layer, not the Streamlit UI — the time-input bug I found in Phase 3 was a UI problem no unit test caught. Next I'd test tasks that cross midnight (a known limitation: a 23:30 task lasting 60 minutes doesn't conflict with a 00:15 task), many tasks at the same time, and Streamlit UI behavior.
+4/5. All 52 tests pass and I checked the demo output by hand. I'm not at 5 because the tests cover the logic layer, not the Streamlit UI — the time-input bug I found in Phase 3 was a UI problem no unit test caught. Next I'd test tasks that cross midnight (a known limitation: a 23:30 task lasting 60 minutes doesn't conflict with a 00:15 task), many tasks at the same time, and Streamlit UI behavior.
 
 ---
 

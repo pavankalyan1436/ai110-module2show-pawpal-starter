@@ -226,7 +226,11 @@ if plan is not None:
                 st.info(f"**{task.title}** ({pet.name}, {task.priority}): {reason}")
 
     for (p1, t1), (p2, t2) in scheduler.conflicting_pairs(plan.scheduled, same_day=True):
-        st.warning(
-            f"⚠️ {t1.title} ({p1.name}) overlaps {t2.title} ({p2.name}) at {t2.time}. "
-            "Consider moving one."
+        # Suggest moving the later task; leave it out so its own slot doesn't block it.
+        others = [(p, t) for p, t in plan.scheduled if t is not t2]
+        slot = scheduler.find_next_available_slot(t2.duration_minutes, tasks=others)
+        tip = (
+            f"Try moving {t2.title} to {slot}." if slot
+            else f"No free {t2.duration_minutes}-min slot left today for {t2.title}."
         )
+        st.warning(f"⚠️ {t1.title} ({p1.name}) overlaps {t2.title} ({p2.name}) at {t2.time}. {tip}")
