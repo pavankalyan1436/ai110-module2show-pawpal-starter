@@ -201,5 +201,5 @@ if st.button("Generate schedule"):
             ]
         )
 
-    for conflict in scheduler.detect_conflicts(plan.scheduled):
+    for conflict in scheduler.detect_conflicts(plan.scheduled, same_day=True):
         st.warning(conflict)

@@ -1,5 +1,7 @@
 from datetime import date, timedelta
 
+import pytest
+
 from pawpal_system import Owner, Pet, Scheduler, Task
 
 
@@ -182,3 +184,252 @@ def test_detect_conflicts_catches_task_nested_inside_a_long_one():
     warnings = scheduler.detect_conflicts(scheduler.owner.get_all_tasks())
 
     assert len(warnings) == 2  # both overlap Grooming, not each other
+
+
+def test_detect_conflicts_ignores_other_days_and_completed_tasks():
+    today = date(2026, 10, 19)
+    pet = Pet("Biscuit", "dog")
+    walk = Task("Walk", 30, time="07:30", frequency="daily", due_date=today)
+    pet.add_task(walk)
+    pet.add_task(Task("Vet", 60, time="07:00", due_date=today + timedelta(days=2)))
+    scheduler = Scheduler(make_owner(pet), day=today)
+    scheduler.mark_task_complete(pet.id, walk.id)  # adds tomorrow's 07:30 walk
+
+    # Done walk (today) and new walk (tomorrow) share a time slot; vet is another day.
+    assert scheduler.detect_conflicts(scheduler.owner.get_all_tasks()) == []
+
+
+def test_detect_conflicts_flags_same_start_time():
+    today = date(2026, 10, 19)
+    pet = Pet("Biscuit", "dog")
+    pet.add_task(Task("Breakfast", 10, time="08:00", due_date=today))
+    pet.add_task(Task("Meds", 5, time="08:00", due_date=today))
+    scheduler = Scheduler(make_owner(pet), day=today)
+
+    assert len(scheduler.detect_conflicts(scheduler.owner.get_all_tasks())) == 1
+
+
+def test_detect_conflicts_three_way_overlap_reports_every_pair():
+    today = date(2026, 10, 19)
+    pet = Pet("Biscuit", "dog")
+    pet.add_task(Task("A", 60, time="09:00", due_date=today))  # 09:00-10:00
+    pet.add_task(Task("B", 60, time="09:15", due_date=today))  # 09:15-10:15
+    pet.add_task(Task("C", 60, time="09:30", due_date=today))  # 09:30-10:30
+    scheduler = Scheduler(make_owner(pet), day=today)
+
+    assert len(scheduler.detect_conflicts(scheduler.owner.get_all_tasks())) == 3
+
+
+def test_tasks_crossing_midnight_are_not_detected():
+    # Known limitation: times are minutes since midnight with no wraparound, so a
+    # task running past midnight never conflicts with an early-morning task, and
+    # its end time is shown as "24:30".
+    today = date(2026, 10, 19)
+    pet = Pet("Biscuit", "dog")
+    pet.add_task(Task("Late walk", 60, time="23:30", due_date=today))  # "ends" 24:30
+    pet.add_task(Task("Night meds", 5, time="00:15", due_date=today))
+    scheduler = Scheduler(make_owner(pet), day=today)
+
+    assert pet.tasks[0].end_minutes == 24 * 60 + 30
+    assert scheduler.detect_conflicts(scheduler.owner.get_all_tasks()) == []
+
+
+# --- Plan generation ---------------------------------------------------------
+
+DAY = date(2026, 10, 19)
+
+
+def plan_for(tasks, available_minutes=120, day=DAY):
+    pet = Pet("Biscuit", "dog")
+    for task in tasks:
+        pet.add_task(task)
+    owner = make_owner(pet)
+    owner.available_minutes = available_minutes
+    return Scheduler(owner, day=day).generate_plan()
+
+
+def test_plan_schedules_tasks_that_exactly_fill_the_budget():
+    plan = plan_for(
+        [Task("Walk", 30, due_date=DAY), Task("Play", 30, due_date=DAY)],
+        available_minutes=60,
+    )
+
+    assert sorted(titles(plan.scheduled)) == ["Play", "Walk"]
+    assert plan.skipped == []
+    assert plan.minutes_used == 60
+
+
+def test_plan_skips_task_that_does_not_fit_and_keeps_going():
+    plan = plan_for(
+        [
+            Task("Walk", 20, "high", due_date=DAY),
+            Task("Groom", 20, "medium", due_date=DAY),
+            Task("Brush", 10, "low", due_date=DAY),
+        ],
+        available_minutes=30,
+    )
+
+    assert sorted(titles(plan.scheduled)) == ["Brush", "Walk"]
+    assert [task.title for _, task, _ in plan.skipped] == ["Groom"]
+    assert plan.skipped[0][2] == "not enough time (needs 20 min, 10 min left)"
+    assert plan.minutes_used == 30
+
+
+def test_plan_includes_overdue_and_excludes_future_and_completed_tasks():
+    done = Task("Done", 10, due_date=DAY)
+    done.mark_complete()
+    plan = plan_for([
+        Task("Overdue", 10, due_date=DAY - timedelta(days=2)),
+        Task("Today", 10, due_date=DAY),
+        Task("Tomorrow", 10, due_date=DAY + timedelta(days=1)),
+        done,
+    ])
+
+    assert sorted(titles(plan.scheduled)) == ["Overdue", "Today"]
+    assert plan.skipped == []
+    assert plan.minutes_used == 20
+
+
+def test_plan_output_is_in_time_order_not_priority_order():
+    plan = plan_for([
+        Task("High late", 10, "high", time="09:00", due_date=DAY),
+        Task("Untimed", 10, "high", due_date=DAY),
+        Task("Low early", 10, "low", time="07:00", due_date=DAY),
+    ])
+
+    assert titles(plan.scheduled) == ["Low early", "High late", "Untimed"]
+
+
+def test_plan_flags_overdue_task_clashing_with_todays_task():
+    pet = Pet("Biscuit", "dog")
+    pet.add_task(Task("Overdue meds", 10, "high", time="08:00", due_date=DAY - timedelta(days=1)))
+    pet.add_task(Task("Breakfast", 10, "high", time="08:00", due_date=DAY))
+    scheduler = Scheduler(make_owner(pet), day=DAY)
+
+    plan = scheduler.generate_plan()
+    warnings = scheduler.detect_conflicts(plan.scheduled, same_day=True)
+
+    assert sorted(titles(plan.scheduled)) == ["Breakfast", "Overdue meds"]
+    assert len(warnings) == 1
+    assert "Overdue meds" in warnings[0] and "Breakfast" in warnings[0]
+    assert "Warnings:" in scheduler.explain_plan(plan)
+    # Without same_day, different due dates mean no conflict.
+    assert scheduler.detect_conflicts(plan.scheduled) == []
+
+
+def test_plan_with_no_pets_is_empty():
+    plan = Scheduler(Owner("Jordan"), day=DAY).generate_plan()
+
+    assert plan.scheduled == [] and plan.skipped == [] and plan.minutes_used == 0
+
+
+def test_plan_with_no_tasks_is_empty():
+    plan = plan_for([])
+
+    assert plan.scheduled == [] and plan.skipped == [] and plan.minutes_used == 0
+
+
+def test_plan_with_zero_minutes_skips_everything():
+    plan = plan_for([Task("Walk", 30, due_date=DAY)], available_minutes=0)
+
+    assert plan.scheduled == []
+    assert titles((p, t) for p, t, _ in plan.skipped) == ["Walk"]
+    assert plan.minutes_used == 0
+
+
+# --- More recurrence ---------------------------------------------------------
+
+def complete_once(task, day=DAY):
+    pet = Pet("Biscuit", "dog")
+    pet.add_task(task)
+    scheduler = Scheduler(make_owner(pet), day=day)
+    return pet, scheduler, scheduler.mark_task_complete(pet.id, task.id)
+
+
+def test_completing_weekly_task_creates_one_due_next_week():
+    _, _, next_task = complete_once(Task("Bath", 30, frequency="weekly", due_date=DAY))
+
+    assert next_task.due_date == DAY + timedelta(days=7)
+
+
+def test_completing_one_off_task_creates_nothing():
+    task = Task("Vet", 60, due_date=DAY)
+    pet, _, next_task = complete_once(task)
+
+    assert next_task is None
+    assert task.completed is True
+    assert pet.tasks == [task]
+
+
+def test_completing_same_task_twice_creates_only_one_occurrence():
+    task = Task("Walk", 30, frequency="daily", due_date=DAY)
+    pet, scheduler, _ = complete_once(task)
+
+    assert scheduler.mark_task_complete(pet.id, task.id) is None
+    assert len(pet.tasks) == 2
+
+
+def test_mark_task_complete_unknown_task_returns_none():
+    task = Task("Walk", 30, frequency="daily", due_date=DAY)
+    pet = Pet("Biscuit", "dog")
+    pet.add_task(task)
+    scheduler = Scheduler(make_owner(pet), day=DAY)
+
+    assert scheduler.mark_task_complete(pet.id, "no-such-task") is None
+    assert len(pet.tasks) == 1
+
+
+def test_early_completion_counts_from_due_date():
+    task = Task("Walk", 30, frequency="daily", due_date=DAY + timedelta(days=2))
+
+    _, _, next_task = complete_once(task, day=DAY)  # done 2 days early
+
+    assert next_task.due_date == DAY + timedelta(days=3)
+
+
+def test_next_occurrence_copies_task_details():
+    task = Task("Walk", 30, "high", "walk", time="07:30", frequency="daily", due_date=DAY)
+
+    _, _, next_task = complete_once(task)
+
+    assert (next_task.title, next_task.duration_minutes, next_task.priority,
+            next_task.category, next_task.time, next_task.frequency) == (
+        "Walk", 30, "high", "walk", "07:30", "daily")
+
+
+def test_recurrence_rolls_over_month_and_year():
+    new_years_eve = date(2026, 12, 31)
+    _, _, next_task = complete_once(
+        Task("Walk", 30, frequency="daily", due_date=new_years_eve), day=new_years_eve
+    )
+
+    assert next_task.due_date == date(2027, 1, 1)
+
+
+# --- Validation --------------------------------------------------------------
+
+@pytest.mark.parametrize("duration", [0, -30])
+def test_task_rejects_non_positive_duration(duration):
+    with pytest.raises(ValueError):
+        Task("Walk", duration)
+
+
+@pytest.mark.parametrize("bad_time", ["9:05", "7:5", "24:00", "12:60", "noon", ""])
+def test_task_rejects_malformed_time(bad_time):
+    with pytest.raises(ValueError):
+        Task("Walk", 30, time=bad_time)
+
+
+@pytest.mark.parametrize("good_time", ["00:00", "09:05", "23:59"])
+def test_task_accepts_valid_time(good_time):
+    assert Task("Walk", 30, time=good_time).time == good_time
+
+
+def test_task_rejects_unknown_priority():
+    with pytest.raises(ValueError):
+        Task("Walk", 30, priority="High")  # case matters
+
+
+def test_task_rejects_unknown_frequency():
+    with pytest.raises(ValueError):
+        Task("Walk", 30, frequency="monthly")

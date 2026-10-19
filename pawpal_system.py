@@ -40,7 +40,9 @@ class Task:
     id: str = field(default_factory=_new_id)
 
     def __post_init__(self) -> None:
-        """Reject invalid priority, frequency, or time values at creation."""
+        """Reject invalid duration, priority, frequency, or time values at creation."""
+        if self.duration_minutes <= 0:
+            raise ValueError(f"duration_minutes must be positive, got {self.duration_minutes!r}")
         if self.priority not in PRIORITY_ORDER:
             raise ValueError(
                 f"priority must be one of {sorted(PRIORITY_ORDER)}, got {self.priority!r}"
@@ -267,17 +269,22 @@ class Scheduler:
             return None
         return pet.complete_task(task_id, completed_on=self.day)
 
-    def detect_conflicts(self, tasks: list[tuple[Pet, Task]]) -> list[str]:
+    def detect_conflicts(
+        self, tasks: list[tuple[Pet, Task]], same_day: bool = False
+    ) -> list[str]:
         """Return a warning for each pair of timed tasks whose time ranges overlap.
 
+        Only incomplete tasks due on the same date are compared, unless
+        same_day is True: then every task is treated as happening on self.day
+        (use this for plan.scheduled, where overdue tasks are done today).
         Back-to-back tasks (one ends exactly when the next starts) are not a
         conflict, and untimed tasks are ignored. Warnings are in start-time order.
         """
-        ordered = self.sort_by_time(tasks)
+        ordered = self.sort_by_time([(p, t) for p, t in tasks if not t.completed])
         return [
             f"Conflict: {self._describe(p1, t1)} overlaps {self._describe(p2, t2)}"
             for (p1, t1), (p2, t2) in combinations(ordered, 2)
-            if t1.overlaps(t2)
+            if (same_day or t1.due_date == t2.due_date) and t1.overlaps(t2)
         ]
 
     @staticmethod
@@ -312,7 +319,7 @@ class Scheduler:
         else:
             lines.append("  (nothing skipped)")
 
-        conflicts = self.detect_conflicts(plan.scheduled)
+        conflicts = self.detect_conflicts(plan.scheduled, same_day=True)
         if conflicts:
             lines += ["", "Warnings:"] + [f"  {c}" for c in conflicts]
         return "\n".join(lines)

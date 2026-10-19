@@ -54,7 +54,7 @@ When I asked AI to simplify `detect_conflicts`, it suggested replacing my "sweep
 
 **a. How you used AI**
 
-I used AI at every stage: brainstorming the UML, generating class skeletons, reviewing the design for missing relationships, implementing the methods, writing the `main.py` demo, connecting the Streamlit UI, suggesting algorithm improvements, and drafting tests. The most helpful prompts were specific ones that listed exact requirements — for example, "Scheduler must only read from `owner.get_all_tasks()`" and "skip tasks that don't fit, don't break." Vague prompts got vague results; precise prompts got code I could actually check. Using a separate chat for the algorithm phase also kept the AI focused on one problem.
+I used AI at every stage: brainstorming the UML, generating class skeletons, reviewing the design for missing relationships, implementing the methods, writing the `main.py` demo, connecting the Streamlit UI, suggesting algorithm improvements, and drafting tests. The most helpful prompts were specific ones that listed exact requirements — for example, "Scheduler must only read from `owner.get_all_tasks()`" and "skip tasks that don't fit, don't break." Vague prompts got vague results; precise prompts got code I could actually check. Using a separate chat for the algorithm and testing phases also kept the AI focused on one problem.
 
 **b. Judgment and verification**
 
@@ -62,7 +62,7 @@ I didn't accept AI suggestions wholesale. The design review gave 12 suggestions 
 
 Testing in the browser caught a bug the AI's automated checks missed: my start times weren't being saved. The empty time box showed `08:00` as grey placeholder text, which looked like a real value. Switching to a time picker fixed it.
 
-I verified the AI's work by running `main.py` and checking the output by hand (scheduled tasks add up to exactly 90 of 90 minutes, the 60-minute grooming was correctly skipped, and the completed daily walk reappeared due tomorrow), by testing the app in the browser, and by running `pytest` (13 passed).
+I verified the AI's work by running `main.py` and checking the output by hand (scheduled tasks add up to exactly 90 of 90 minutes, the 60-minute grooming was correctly skipped, and the completed daily walk reappeared due tomorrow), by testing the app in the browser, and by running `pytest` (45 passed).
 
 ---
 
@@ -70,13 +70,13 @@ I verified the AI's work by running `main.py` and checking the output by hand (s
 
 **a. What you tested**
 
-- What behaviors did you test?
-- Why were these tests important?
+My 45 tests cover sorting (chronological order, untimed last, priority tie-breaks), filtering (by pet, status, and due date), recurrence (daily → tomorrow, weekly → +7 days, one-time tasks don't repeat, no duplicates on double-complete, Dec 31 → Jan 1 rollover), conflict detection (same start time, overlapping durations, three-way overlaps, back-to-back is not a conflict), `generate_plan` (exact fit, skip-and-continue, overdue included, future and completed excluded, empty inputs), and input validation. These matter because they're what a pet owner relies on — a missed recurring medication or a hidden conflict would be a real problem.
+
+Testing found real bugs. A negative duration added time back to the budget, so an 80-minute task fit into a 30-minute day; I fixed it by rejecting durations ≤ 0. Also, a completed daily walk was flagged as conflicting with tomorrow's copy; I fixed `detect_conflicts` to skip completed tasks and compare only same-day tasks, and then made sure overdue tasks scheduled today are still checked against today's tasks.
 
 **b. Confidence**
 
-- How confident are you that your scheduler works correctly?
-- What edge cases would you test next if you had more time?
+4/5. All 45 tests pass and I checked the demo output by hand. I'm not at 5 because the tests cover the logic layer, not the Streamlit UI — the time-input bug I found in Phase 3 was a UI problem no unit test caught. Next I'd test tasks that cross midnight (a known limitation: a 23:30 task lasting 60 minutes doesn't conflict with a 00:15 task), many tasks at the same time, and Streamlit UI behavior.
 
 ---
 
