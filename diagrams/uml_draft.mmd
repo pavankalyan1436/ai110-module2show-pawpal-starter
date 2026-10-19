@@ -2,26 +2,29 @@ classDiagram
     class Owner {
         +str name
         +int available_minutes
-        +dict preferences
         +list~Pet~ pets
         +add_pet(pet: Pet) None
-        +remove_pet(name: str) None
-        +get_pet(name: str) Pet
-        +all_tasks() list~Task~
+        +remove_pet(pet_id: str) None
+        +get_pet(pet_id: str) Pet
+        +all_tasks() list~tuple~Pet, Task~~
     }
 
     class Pet {
+        +str id
         +str name
         +str species
         +str breed
         +int age
         +list~Task~ tasks
         +add_task(task: Task) None
-        +remove_task(title: str) None
+        +remove_task(task_id: str) None
+        +get_task(task_id: str) Task
+        +complete_task(task_id: str) Task
         +pending_tasks() list~Task~
     }
 
     class Task {
+        +str id
         +str title
         +str category
         +int duration_minutes
@@ -30,23 +33,33 @@ classDiagram
         +str frequency
         +date due_date
         +bool completed
+        +__post_init__() None
         +mark_complete() None
         +priority_rank() int
         +next_occurrence() Task
     }
 
+    class Plan {
+        +list~tuple~Pet, Task~~ scheduled
+        +list~tuple~Pet, Task, str~~ skipped
+        +int minutes_used
+    }
+
     class Scheduler {
         +Owner owner
         +date day
-        +generate_plan() list~Task~
-        +sort_by_time(tasks: list~Task~) list~Task~
-        +sort_by_priority(tasks: list~Task~) list~Task~
-        +filter_tasks(pet_name: str, completed: bool) list~Task~
-        +detect_conflicts(tasks: list~Task~) list~str~
-        +explain_plan(plan: list~Task~) str
+        +generate_plan() Plan
+        +sort_by_time(tasks: list~tuple~Pet, Task~~) list~tuple~Pet, Task~~
+        +sort_by_priority(tasks: list~tuple~Pet, Task~~) list~tuple~Pet, Task~~
+        +filter_tasks(pet_name: str, completed: bool) list~tuple~Pet, Task~~
+        +detect_conflicts(tasks: list~tuple~Pet, Task~~) list~str~
+        +explain_plan(plan: Plan) str
     }
 
     Owner "1" o-- "*" Pet : owns
     Pet "1" *-- "*" Task : has
+    Pet ..> Task : creates next occurrence
     Scheduler "1" --> "1" Owner : plans for
+    Scheduler ..> Plan : produces
+    Plan o-- Task : scheduled / skipped
     Scheduler ..> Task : orders / filters

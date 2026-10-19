@@ -1,16 +1,24 @@
-"""PawPal+ logic layer: Owner, Pet, Task, and Scheduler.
+"""PawPal+ logic layer: Owner, Pet, Task, Plan, and Scheduler.
 
 Phase 1 skeleton — attributes and method stubs only. Logic is filled in during Phase 2/4.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Optional
+from uuid import uuid4
 
 
 PRIORITY_ORDER = {"high": 0, "medium": 1, "low": 2}
+FREQUENCIES = {"once", "daily", "weekly"}
+TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")  # zero-padded 24h "HH:MM"
+
+
+def _new_id() -> str:
+    return uuid4().hex
 
 
 @dataclass
@@ -25,6 +33,20 @@ class Task:
     frequency: str = "once"           # "once" | "daily" | "weekly"
     due_date: date = field(default_factory=date.today)
     completed: bool = False
+    id: str = field(default_factory=_new_id)
+
+    def __post_init__(self) -> None:
+        """Reject invalid priority, frequency, or time values at creation."""
+        if self.priority not in PRIORITY_ORDER:
+            raise ValueError(
+                f"priority must be one of {sorted(PRIORITY_ORDER)}, got {self.priority!r}"
+            )
+        if self.frequency not in FREQUENCIES:
+            raise ValueError(
+                f"frequency must be one of {sorted(FREQUENCIES)}, got {self.frequency!r}"
+            )
+        if self.time is not None and not TIME_PATTERN.match(self.time):
+            raise ValueError(f'time must be zero-padded "HH:MM" (e.g. "09:05"), got {self.time!r}')
 
     def mark_complete(self) -> None:
         """Mark this task as done."""
@@ -48,13 +70,26 @@ class Pet:
     breed: str = ""
     age: int = 0
     tasks: list[Task] = field(default_factory=list)
+    id: str = field(default_factory=_new_id)
 
     def add_task(self, task: Task) -> None:
         """Attach a task to this pet."""
         pass
 
-    def remove_task(self, title: str) -> None:
-        """Remove a task by title."""
+    def remove_task(self, task_id: str) -> None:
+        """Remove a task by id."""
+        pass
+
+    def get_task(self, task_id: str) -> Optional[Task]:
+        """Look up a task by id."""
+        pass
+
+    def complete_task(self, task_id: str) -> Optional[Task]:
+        """Mark a task done and append its next occurrence (if recurring).
+
+        Returns the newly created occurrence, or None. Safe to call twice:
+        completing an already-completed task is a no-op and creates nothing.
+        """
         pass
 
     def pending_tasks(self) -> list[Task]:
@@ -68,24 +103,32 @@ class Owner:
 
     name: str
     available_minutes: int = 120
-    preferences: dict = field(default_factory=dict)
     pets: list[Pet] = field(default_factory=list)
 
     def add_pet(self, pet: Pet) -> None:
         """Add a pet to this owner."""
         pass
 
-    def remove_pet(self, name: str) -> None:
-        """Remove a pet by name."""
+    def remove_pet(self, pet_id: str) -> None:
+        """Remove a pet by id."""
         pass
 
-    def get_pet(self, name: str) -> Optional[Pet]:
-        """Look up a pet by name."""
+    def get_pet(self, pet_id: str) -> Optional[Pet]:
+        """Look up a pet by id."""
         pass
 
     def all_tasks(self) -> list[tuple[Pet, Task]]:
         """Return every (pet, task) pair across all pets."""
         pass
+
+
+@dataclass
+class Plan:
+    """The result of scheduling: what made it in, what didn't (and why)."""
+
+    scheduled: list[tuple[Pet, Task]] = field(default_factory=list)
+    skipped: list[tuple[Pet, Task, str]] = field(default_factory=list)  # (pet, task, reason)
+    minutes_used: int = 0
 
 
 class Scheduler:
@@ -95,7 +138,7 @@ class Scheduler:
         self.owner = owner
         self.day = day or date.today()
 
-    def generate_plan(self) -> list[tuple[Pet, Task]]:
+    def generate_plan(self) -> Plan:
         """Pick and order today's tasks so they fit within the owner's available time."""
         pass
 
@@ -117,6 +160,6 @@ class Scheduler:
         """Return human-readable warnings for tasks with overlapping time slots."""
         pass
 
-    def explain_plan(self, plan: list[tuple[Pet, Task]]) -> str:
+    def explain_plan(self, plan: Plan) -> str:
         """Explain why tasks were chosen/skipped and in what order."""
         pass

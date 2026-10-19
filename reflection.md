@@ -10,20 +10,27 @@
 
 **a. Initial design**
 
-My UML has four classes:
+My UML has five classes:
 
-- **Task** (dataclass) — one care activity. Holds title, category, duration, priority, optional start time, frequency (once/daily/weekly), due date, and completion status. Responsible for marking itself complete, converting priority into a sortable rank, and producing its next occurrence if it recurs.
-- **Pet** (dataclass) — holds basic pet info and owns a list of Tasks. Responsible for adding/removing tasks and returning pending ones.
-- **Owner** (dataclass) — holds the owner's name, daily time budget (`available_minutes`), preferences, and a list of Pets. Responsible for managing pets and collecting all tasks across them.
-- **Scheduler** — the "brain." Takes an Owner and a day, and is responsible for sorting (by priority and by time), filtering (by pet or status), detecting time conflicts, generating the daily plan within the time budget, and explaining the plan.
+- **Task** (dataclass) — one care activity. Holds a unique id, title, category, duration, priority, optional start time, frequency (once/daily/weekly), due date, and completion status. Responsible for validating its own values, marking itself complete, converting priority into a sortable rank, and producing its next occurrence if it recurs.
+- **Pet** (dataclass) — holds a unique id, basic pet info, and a list of Tasks. Responsible for adding, removing, finding, and completing tasks (including adding the next occurrence of recurring tasks).
+- **Owner** (dataclass) — holds the owner's name, daily time budget (`available_minutes`), and a list of Pets. Responsible for managing pets and collecting all tasks across them.
+- **Plan** (dataclass) — the result of scheduling: which tasks were scheduled, which were skipped (with a reason), and total minutes used.
+- **Scheduler** — the "brain." Takes an Owner and a day, and is responsible for sorting (by priority and by time), filtering, detecting time conflicts, generating a Plan within the time budget, and explaining it.
 
-Relationships: an Owner has many Pets, a Pet has many Tasks, and a Scheduler plans for one Owner. Keeping scheduling logic in Scheduler (rather than in Owner or Pet) keeps the data classes simple and makes the algorithm easy to test on its own.
+Relationships: an Owner has many Pets, a Pet has many Tasks, a Scheduler plans for one Owner and produces a Plan. Keeping scheduling logic in Scheduler (rather than in Owner or Pet) keeps the data classes simple and makes the algorithm easy to test on its own.
 
 **b. Design changes**
 
-<!-- TODO: replace this with what YOUR AI review suggested -->
+After asking AI to review my skeleton, I made five changes:
 
-After an AI review of the skeleton, I changed the Scheduler's methods to work with `(Pet, Task)` pairs instead of bare `Task` objects. A Task doesn't store which pet it belongs to, so a plan of bare Tasks couldn't show "Walk — Biscuit" or filter by pet. Returning pairs solved that without adding a back-reference from Task to Pet (which would create a circular dependency).
+- **Added `Pet.complete_task()`** — `next_occurrence()` created the next recurring task, but nothing saved it to the pet, so daily/weekly tasks would never actually repeat. It's also safe to call twice so a double-click doesn't create duplicates.
+- **Added unique `id`s to Task and Pet** — looking things up by name breaks when there are two "Walk" tasks or two pets named "Max."
+- **Added a `Plan` dataclass** — so the scheduler can explain which tasks were skipped and why, not just which were chosen.
+- **Removed `Owner.preferences`** — no method used it, so it was a promise the design didn't keep.
+- **Added validation in `Task.__post_init__`** — a typo like `"High"` or a time like `"9:00"` would have silently sorted wrong.
+
+I chose not to apply the AI's suggestions about overlap detection, plan ordering, and `filter_tasks` yet, because those belong to the algorithm phase.
 
 ---
 
