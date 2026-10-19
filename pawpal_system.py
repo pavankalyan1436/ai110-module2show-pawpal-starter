@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
+from itertools import combinations
 from typing import Optional
 from uuid import uuid4
 
@@ -17,6 +18,11 @@ TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")  # zero-padded 24h "HH:M
 
 def _new_id() -> str:
     return uuid4().hex
+
+
+def _format_minutes(minutes: int) -> str:
+    """Turn minutes since midnight into "HH:MM"."""
+    return f"{minutes // 60:02d}:{minutes % 60:02d}"
 
 
 @dataclass
@@ -54,14 +60,40 @@ class Task:
         """Return a sortable number for priority (lower = more urgent)."""
         return PRIORITY_ORDER[self.priority]
 
-    def next_occurrence(self) -> Optional["Task"]:
-        """For recurring tasks, return a new Task for the next due date; else None."""
+    @property
+    def start_minutes(self) -> Optional[int]:
+        """Start time as minutes since midnight, or None if untimed."""
+        if self.time is None:
+            return None
+        hours, minutes = self.time.split(":")
+        return int(hours) * 60 + int(minutes)
+
+    @property
+    def end_minutes(self) -> Optional[int]:
+        """End time as minutes since midnight, or None if untimed."""
+        start = self.start_minutes
+        return None if start is None else start + self.duration_minutes
+
+    def overlaps(self, other: "Task") -> bool:
+        """True if both tasks are timed and their time ranges overlap (touching ends don't count)."""
+        if self.time is None or other.time is None:
+            return False
+        return self.start_minutes < other.end_minutes and other.start_minutes < self.end_minutes
+
+    def next_occurrence(self, completed_on: Optional[date] = None) -> Optional["Task"]:
+        """For recurring tasks, return a new Task for the next due date; else None.
+
+        The next due date counts from whichever is later: the old due date or the
+        day it was completed. So a daily task finished 3 days late is next due
+        tomorrow, not on a day that has already passed.
+        """
         days = RECURRENCE_DAYS.get(self.frequency)
         if days is None:
             return None
+        base = max(self.due_date, completed_on or self.due_date)
         return replace(
             self,
-            due_date=self.due_date + timedelta(days=days),
+            due_date=base + timedelta(days=days),
             completed=False,
             id=_new_id(),
         )
@@ -90,18 +122,19 @@ class Pet:
         """Look up a task by id."""
         return next((t for t in self.tasks if t.id == task_id), None)
 
-    def complete_task(self, task_id: str) -> Optional[Task]:
+    def complete_task(self, task_id: str, completed_on: Optional[date] = None) -> Optional[Task]:
         """Mark a task done and append its next occurrence (if recurring).
 
         Returns the newly created occurrence, or None. Safe to call twice:
         completing an already-completed task is a no-op and creates nothing.
-        Unknown ids also return None.
+        Unknown ids also return None. completed_on (default: today) sets where
+        the next due date counts from; see Task.next_occurrence().
         """
         task = self.get_task(task_id)
         if task is None or task.completed:
             return None
         task.mark_complete()
-        next_task = task.next_occurrence()
+        next_task = task.next_occurrence(completed_on or date.today())
         if next_task is not None:
             self.add_task(next_task)
         return next_task
@@ -187,37 +220,70 @@ class Scheduler:
         return sorted(tasks, key=lambda pt: (pt[1].priority_rank(), pt[1].duration_minutes))
 
     def sort_by_time(self, tasks: list[tuple[Pet, Task]]) -> list[tuple[Pet, Task]]:
-        """Order tasks by their HH:MM start time; untimed tasks go last."""
-        # Zero-padded "HH:MM" strings sort correctly as text (enforced in Task.__post_init__).
-        return sorted(tasks, key=lambda pt: (pt[1].time is None, pt[1].time or ""))
+        """Order tasks by start time; untimed tasks go last.
+
+        Ties (same start time, or both untimed) go high -> low priority, then shorter first.
+        """
+        return sorted(
+            tasks,
+            key=lambda pt: (
+                pt[1].start_minutes is None,
+                pt[1].start_minutes or 0,
+                pt[1].priority_rank(),
+                pt[1].duration_minutes,
+            ),
+        )
 
     def filter_tasks(
-        self, pet_name: Optional[str] = None, completed: Optional[bool] = None
+        self,
+        pet_id: Optional[str] = None,
+        pet_name: Optional[str] = None,
+        completed: Optional[bool] = None,
+        due_by: Optional[date] = None,
     ) -> list[tuple[Pet, Task]]:
-        """Filter tasks by pet and/or completion status."""
+        """Filter tasks by pet, completion status, and/or due date.
+
+        pet_id is exact; pet_name ignores case. due_by keeps tasks due on or
+        before that date, which hides future occurrences of recurring tasks.
+        """
+        name = pet_name.casefold() if pet_name is not None else None
         return [
             (pet, task)
             for pet, task in self.owner.get_all_tasks()
-            if (pet_name is None or pet.name == pet_name)
+            if (pet_id is None or pet.id == pet_id)
+            and (name is None or pet.name.casefold() == name)
             and (completed is None or task.completed == completed)
+            and (due_by is None or task.due_date <= due_by)
         ]
 
-    def detect_conflicts(self, tasks: list[tuple[Pet, Task]]) -> list[str]:
-        """Return human-readable warnings for timed tasks that share a start time.
+    def mark_task_complete(self, pet_id: str, task_id: str) -> Optional[Task]:
+        """Complete a pet's task as of self.day; return the next occurrence, if any.
 
-        Only exact start-time matches are flagged for now; duration overlaps are not.
+        Returns None for unknown pet/task ids, already-completed tasks, and
+        one-off tasks.
         """
-        by_time: dict[str, list[tuple[Pet, Task]]] = {}
-        for pet, task in tasks:
-            if task.time is not None:
-                by_time.setdefault(task.time, []).append((pet, task))
+        pet = self.owner.get_pet(pet_id)
+        if pet is None:
+            return None
+        return pet.complete_task(task_id, completed_on=self.day)
 
-        warnings = []
-        for time, group in sorted(by_time.items()):
-            if len(group) > 1:
-                names = ", ".join(f"{task.title} ({pet.name})" for pet, task in group)
-                warnings.append(f"Conflict at {time}: {names}")
-        return warnings
+    def detect_conflicts(self, tasks: list[tuple[Pet, Task]]) -> list[str]:
+        """Return a warning for each pair of timed tasks whose time ranges overlap.
+
+        Back-to-back tasks (one ends exactly when the next starts) are not a
+        conflict, and untimed tasks are ignored. Warnings are in start-time order.
+        """
+        ordered = self.sort_by_time(tasks)
+        return [
+            f"Conflict: {self._describe(p1, t1)} overlaps {self._describe(p2, t2)}"
+            for (p1, t1), (p2, t2) in combinations(ordered, 2)
+            if t1.overlaps(t2)
+        ]
+
+    @staticmethod
+    def _describe(pet: Pet, task: Task) -> str:
+        """Format a timed task as "Title (Pet, HH:MM-HH:MM)" for warnings."""
+        return f"{task.title} ({pet.name}, {task.time}-{_format_minutes(task.end_minutes)})"
 
     def explain_plan(self, plan: Plan) -> str:
         """Explain why tasks were chosen/skipped and in what order."""

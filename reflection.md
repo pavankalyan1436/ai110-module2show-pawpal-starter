@@ -30,7 +30,7 @@ After asking AI to review my skeleton, I made five changes:
 - **Removed `Owner.preferences`** — no method used it, so it was a promise the design didn't keep.
 - **Added validation in `Task.__post_init__`** — a typo like `"High"` or a time like `"9:00"` would have silently sorted wrong.
 
-I chose not to apply the AI's suggestions about overlap detection, plan ordering, and `filter_tasks` yet, because those belong to the algorithm phase.
+I deferred the AI's suggestions about overlap detection, sort tie-breakers, and `filter_tasks` to the algorithm phase. In Phase 4 I implemented them, adding `Task.overlaps()`, `Scheduler.mark_task_complete()`, and a `due_by` filter.
 
 ---
 
@@ -38,13 +38,15 @@ I chose not to apply the AI's suggestions about overlap detection, plan ordering
 
 **a. Constraints and priorities**
 
-- What constraints does your scheduler consider (for example: time, priority, preferences)?
-- How did you decide which constraints mattered most?
+The scheduler considers four constraints: (1) the owner's daily time budget (`available_minutes`), (2) task priority (high → medium → low), (3) due date — only tasks due today or overdue are planned, and (4) start time, used for ordering and conflict detection. I ranked priority first because missing meds or a feeding is worse than missing grooming. The time budget comes next so the plan is realistic.
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+The scheduler picks tasks greedily — highest priority first, shorter first on ties — and skips anything that doesn't fit. This can leave time unused or skip a task that a smarter "knapsack" algorithm would fit in. I accepted this because a predictable rule ("important things first") is easier for a pet owner to understand and trust.
+
+A second tradeoff: conflicts are reported as warnings, not prevented. In my demo, the 07:30 walk overlaps the 07:45 ear drops, and both are still scheduled with a warning. Automatically moving tasks would be more complex and might move something the owner deliberately timed (like meds), so I let the owner decide.
+
+When I asked AI to simplify `detect_conflicts`, it suggested replacing my "sweep" loop with a simple pairwise check using a new `Task.overlaps()` method. The sweep is technically faster when there are few overlaps, but a pet owner's day has maybe 5–20 timed tasks, so the speed difference is unnoticeable. I chose the simpler version because the overlap rule (`a.start < b.end and b.start < a.end`) is readable in one line, and `Task.overlaps()` can be tested on its own. My existing tests (back-to-back, nested, untimed) passed unchanged, which confirmed the rewrite didn't change behavior.
 
 ---
 
@@ -52,13 +54,15 @@ I chose not to apply the AI's suggestions about overlap detection, plan ordering
 
 **a. How you used AI**
 
-I used AI at every stage: brainstorming the UML, generating class skeletons, reviewing the design for missing relationships, implementing the methods, writing the `main.py` demo, and drafting tests. The most helpful prompts were specific ones that listed exact requirements — for example, "Scheduler must only read from `owner.get_all_tasks()`" and "skip tasks that don't fit, don't break." Vague prompts got vague results; precise prompts got code I could actually check.
+I used AI at every stage: brainstorming the UML, generating class skeletons, reviewing the design for missing relationships, implementing the methods, writing the `main.py` demo, connecting the Streamlit UI, suggesting algorithm improvements, and drafting tests. The most helpful prompts were specific ones that listed exact requirements — for example, "Scheduler must only read from `owner.get_all_tasks()`" and "skip tasks that don't fit, don't break." Vague prompts got vague results; precise prompts got code I could actually check. Using a separate chat for the algorithm phase also kept the AI focused on one problem.
 
 **b. Judgment and verification**
 
-The AI's design review gave 12 suggestions, and I didn't accept all of them. I applied five (ids, `complete_task`, `Plan`, validation, removing the unused `preferences`) and deferred overlap detection, plan ordering, and `filter_tasks` changes to the algorithm phase to keep the skeleton focused. The AI also went slightly beyond what I asked — it wrote real validation code instead of a stub — and I kept that after confirming it rejected bad inputs like `"High"` and `"9:00"`. It also caught a mistake: I had renamed the diagram to `uml_draft.mmd`, but the starter repo expected `uml.mmd`, so I renamed it back.
+I didn't accept AI suggestions wholesale. The design review gave 12 suggestions and I applied five at first, deferring the rest. In Phase 4 the AI suggested 13 algorithm improvements; I picked seven (overlap detection, time-in-minutes, recurrence based on today, sort tie-breakers, filtering by pet id and due date) and skipped the rest — like labeling same-pet vs. cross-pet conflicts and duplicate detection — because they added complexity the app didn't need yet. The AI also caught one of my mistakes: I had renamed the diagram to `uml_draft.mmd`, but the starter repo expected `uml.mmd`.
 
-I verified the AI's code by running `main.py` and checking the math by hand (scheduled tasks add up to 85 of 90 minutes, so the 60-minute grooming was correctly skipped), and by running `pytest` (2 passed).
+Testing in the browser caught a bug the AI's automated checks missed: my start times weren't being saved. The empty time box showed `08:00` as grey placeholder text, which looked like a real value. Switching to a time picker fixed it.
+
+I verified the AI's work by running `main.py` and checking the output by hand (scheduled tasks add up to exactly 90 of 90 minutes, the 60-minute grooming was correctly skipped, and the completed daily walk reappeared due tomorrow), by testing the app in the browser, and by running `pytest` (13 passed).
 
 ---
 

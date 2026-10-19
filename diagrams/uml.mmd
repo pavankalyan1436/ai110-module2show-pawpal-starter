@@ -19,7 +19,7 @@ classDiagram
         +add_task(task: Task) None
         +remove_task(task_id: str) None
         +get_task(task_id: str) Task
-        +complete_task(task_id: str) Task
+        +complete_task(task_id: str, completed_on: date) Task
         +pending_tasks() list~Task~
     }
 
@@ -35,8 +35,11 @@ classDiagram
         +bool completed
         +__post_init__() None
         +mark_complete() None
+        +start_minutes int
+        +end_minutes int
         +priority_rank() int
-        +next_occurrence() Task
+        +overlaps(other: Task) bool
+        +next_occurrence(completed_on: date) Task
     }
 
     class Plan {
@@ -51,7 +54,8 @@ classDiagram
         +generate_plan() Plan
         +sort_by_time(tasks: list~tuple~Pet, Task~~) list~tuple~Pet, Task~~
         +sort_by_priority(tasks: list~tuple~Pet, Task~~) list~tuple~Pet, Task~~
-        +filter_tasks(pet_name: str, completed: bool) list~tuple~Pet, Task~~
+        +filter_tasks(pet_id: str, pet_name: str, completed: bool, due_by: date) list~tuple~Pet, Task~~
+        +mark_task_complete(pet_id: str, task_id: str) Task
         +detect_conflicts(tasks: list~tuple~Pet, Task~~) list~str~
         +explain_plan(plan: Plan) str
     }

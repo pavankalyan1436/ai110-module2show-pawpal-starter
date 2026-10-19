@@ -52,7 +52,7 @@ All backend logic lives in `pawpal_system.py`. The classes work together like th
 | `Pet` | Stores pet details and its list of tasks. `add_task()`, `remove_task()`, `get_task()`, and `complete_task()`, which marks a task done and adds the next occurrence if it recurs (safe to call twice). |
 | `Owner` | Stores the owner's name, daily time budget (`available_minutes`), and pets. `get_all_tasks()` returns every `(pet, task)` pair across all pets. |
 | `Plan` | The scheduler's result: `scheduled` tasks, `skipped` tasks with a reason, and `minutes_used`. |
-| `Scheduler` | The "brain." Gets tasks only through `owner.get_all_tasks()`, keeps tasks due today (or overdue) that aren't done, picks them by priority until the time budget runs out, orders the result by start time, flags same-time conflicts, and explains the plan. |
+| `Scheduler` | The "brain." Gets tasks only through `owner.get_all_tasks()`, keeps tasks due today (or overdue) that aren't done, picks them by priority until the time budget runs out, orders the result by start time, flags tasks whose time ranges overlap, and explains the plan. |
 
 Run the CLI demo with:
 

@@ -117,7 +117,7 @@ if owner.pets:
 else:
     st.info("Add a pet before adding tasks.")
 
-all_tasks = owner.get_all_tasks()
+all_tasks = Scheduler(owner).sort_by_time(owner.get_all_tasks())
 if all_tasks:
     st.table(
         [
@@ -128,11 +128,36 @@ if all_tasks:
                 "Duration (min)": task.duration_minutes,
                 "Priority": task.priority,
                 "Frequency": task.frequency,
+                "Due": task.due_date.isoformat(),
                 "Done": task.completed,
             }
             for pet, task in all_tasks
         ]
     )
+
+    # A message set before st.rerun() would be lost, so it's shown on the next run.
+    if "done_message" in st.session_state:
+        st.success(st.session_state.pop("done_message"))
+
+    pending = {task.id: (pet, task) for pet, task in all_tasks if not task.completed}
+    if pending:
+        with st.form("mark_done"):
+            done_id = st.selectbox(
+                "Mark a task done",
+                list(pending),
+                format_func=lambda tid: (
+                    f"{pending[tid][1].title} ({pending[tid][0].name}) - "
+                    f"{pending[tid][1].time or 'anytime'}, due {pending[tid][1].due_date.isoformat()}"
+                ),
+            )
+            if st.form_submit_button("Mark done"):
+                pet, task = pending[done_id]
+                next_task = Scheduler(owner).mark_task_complete(pet.id, task.id)
+                message = f"Marked '{task.title}' for {pet.name} done."
+                if next_task is not None:
+                    message += f" Next one is due {next_task.due_date.isoformat()}."
+                st.session_state.done_message = message
+                st.rerun()
 elif owner.pets:
     st.info("No tasks yet. Add one above.")
 
