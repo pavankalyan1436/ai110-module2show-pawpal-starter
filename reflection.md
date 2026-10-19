@@ -2,15 +2,28 @@
 
 ## 1. System Design
 
+**Core user actions**
+
+1. Add a pet (name, species, breed, age) to their owner profile.
+2. Add or edit a care task for a pet — e.g., schedule a 30-minute walk at 08:00 with high priority that repeats daily.
+3. Generate and view today's plan: a sorted list of tasks that fits the owner's available time, with conflict warnings and a short explanation of why tasks were chosen.
+
 **a. Initial design**
 
-- Briefly describe your initial UML design.
-- What classes did you include, and what responsibilities did you assign to each?
+My UML has four classes:
+
+- **Task** (dataclass) — one care activity. Holds title, category, duration, priority, optional start time, frequency (once/daily/weekly), due date, and completion status. Responsible for marking itself complete, converting priority into a sortable rank, and producing its next occurrence if it recurs.
+- **Pet** (dataclass) — holds basic pet info and owns a list of Tasks. Responsible for adding/removing tasks and returning pending ones.
+- **Owner** (dataclass) — holds the owner's name, daily time budget (`available_minutes`), preferences, and a list of Pets. Responsible for managing pets and collecting all tasks across them.
+- **Scheduler** — the "brain." Takes an Owner and a day, and is responsible for sorting (by priority and by time), filtering (by pet or status), detecting time conflicts, generating the daily plan within the time budget, and explaining the plan.
+
+Relationships: an Owner has many Pets, a Pet has many Tasks, and a Scheduler plans for one Owner. Keeping scheduling logic in Scheduler (rather than in Owner or Pet) keeps the data classes simple and makes the algorithm easy to test on its own.
 
 **b. Design changes**
 
-- Did your design change during implementation?
-- If yes, describe at least one change and why you made it.
+<!-- TODO: replace this with what YOUR AI review suggested -->
+
+After an AI review of the skeleton, I changed the Scheduler's methods to work with `(Pet, Task)` pairs instead of bare `Task` objects. A Task doesn't store which pet it belongs to, so a plan of bare Tasks couldn't show "Walk — Biscuit" or filter by pet. Returning pairs solved that without adding a back-reference from Task to Pet (which would create a circular dependency).
 
 ---
 
