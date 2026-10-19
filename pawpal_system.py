@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
+import os
 import re
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import date, timedelta
 from itertools import combinations
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Union
 from uuid import uuid4
 
 
@@ -103,6 +106,17 @@ class Task:
             id=_new_id(),
         )
 
+    def to_dict(self) -> dict:
+        """Return a JSON-ready dict; due_date becomes an ISO string."""
+        data = asdict(self)
+        data["due_date"] = self.due_date.isoformat()
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Task":
+        """Rebuild a Task from to_dict() output (validated like any new Task)."""
+        return cls(**{**data, "due_date": date.fromisoformat(data["due_date"])})
+
 
 @dataclass
 class Pet:
@@ -148,6 +162,23 @@ class Pet:
         """Return tasks that are not yet completed."""
         return [t for t in self.tasks if not t.completed]
 
+    def to_dict(self) -> dict:
+        """Return a JSON-ready dict, including every task."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "species": self.species,
+            "breed": self.breed,
+            "age": self.age,
+            "tasks": [t.to_dict() for t in self.tasks],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Pet":
+        """Rebuild a Pet (and its tasks) from to_dict() output."""
+        tasks = [Task.from_dict(t) for t in data.get("tasks", [])]
+        return cls(**{**data, "tasks": tasks})
+
 
 @dataclass
 class Owner:
@@ -172,6 +203,43 @@ class Owner:
     def get_all_tasks(self) -> list[tuple[Pet, Task]]:
         """Return every (pet, task) pair across all pets."""
         return [(pet, task) for pet in self.pets for task in pet.tasks]
+
+    def to_dict(self) -> dict:
+        """Return a JSON-ready dict, including every pet and task."""
+        return {
+            "name": self.name,
+            "available_minutes": self.available_minutes,
+            "pets": [p.to_dict() for p in self.pets],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Owner":
+        """Rebuild an Owner (and its pets and tasks) from to_dict() output."""
+        pets = [Pet.from_dict(p) for p in data.get("pets", [])]
+        return cls(**{**data, "pets": pets})
+
+    def save_to_json(self, path: Union[str, Path] = "data.json") -> None:
+        """Write this owner, their pets, and all tasks to a JSON file.
+
+        Writes to a temporary file first and then swaps it in, so a crash
+        mid-write can't leave a half-written data file behind.
+        """
+        path = Path(path)
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
+        os.replace(tmp, path)
+
+    @classmethod
+    def load_from_json(cls, path: Union[str, Path] = "data.json") -> Optional["Owner"]:
+        """Load an owner saved by save_to_json(); return None if the file is missing.
+
+        A file that exists but isn't valid PawPal+ data raises ValueError
+        (json.JSONDecodeError is a ValueError), KeyError, or TypeError.
+        """
+        path = Path(path)
+        if not path.exists():
+            return None
+        return cls.from_dict(json.loads(path.read_text(encoding="utf-8")))
 
 
 @dataclass

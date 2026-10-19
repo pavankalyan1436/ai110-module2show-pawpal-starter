@@ -202,15 +202,15 @@ pytest
 pytest --cov
 ```
 
-The 52 tests in `tests/test_pawpal.py` cover sorting (time order, tie-breaks), filtering, plan generation (exact fit, skip-and-continue, overdue/future/completed tasks, empty inputs, zero budget), recurrence (daily, weekly, one-off, completing twice, early and late completion, month/year rollover), conflict detection (overlaps, back-to-back, same start time, three-way, other days, `same_day`), finding the next available slot (empty day, gaps between tasks, exact fit at day end, no room left, ignored tasks, suggestions in the plan explanation), and input validation. Scheduling tests use fixed dates so they don't depend on when they run.
+The 56 tests in `tests/test_pawpal.py` cover sorting (time order, tie-breaks), filtering, plan generation (exact fit, skip-and-continue, overdue/future/completed tasks, empty inputs, zero budget), recurrence (daily, weekly, one-off, completing twice, early and late completion, month/year rollover), conflict detection (overlaps, back-to-back, same start time, three-way, other days, `same_day`), finding the next available slot (empty day, gaps between tasks, exact fit at day end, no room left, ignored tasks, suggestions in the plan explanation), JSON persistence (round-trip, missing file, recurrence after loading, invalid data), and input validation. Scheduling tests use fixed dates so they don't depend on when they run.
 
 Sample test output:
 
 ```
-tests/test_pawpal.py ................................................... [ 98%]
-.                                                                        [100%]
+tests/test_pawpal.py ................................................... [ 91%]
+.....                                                                    [100%]
 
-============================== 52 passed in 0.02s ==============================
+============================== 56 passed in 0.03s ==============================
 ```
 
 ## 📐 Smarter Scheduling
@@ -244,6 +244,30 @@ Scheduled:
 Skipped:
   Full grooming (Biscuit) [low]: not enough time (needs 60 min, 0 min left)
 ```
+
+## 💾 Data Persistence
+
+The Streamlit app saves everything to `data.json` (next to `app.py`), so your owner, pets, and tasks survive a browser refresh or an app restart.
+
+**How it works**
+
+1. **Load on startup.** When a new browser session starts, the app calls `Owner.load_from_json("data.json")`. If the file doesn't exist it returns `None`, and the app starts with a default owner. If the file can't be read, the app shows a warning and starts fresh.
+2. **Save after each change.** Adding a pet, adding a task, marking a task done, and changing the owner's name or available minutes each call `owner.save_to_json("data.json")`. Generating a schedule or changing the filters doesn't save, because those don't change your data.
+3. **Reset clears it.** The **Reset** button deletes `data.json` and clears the session, so the next run starts from scratch.
+
+**What's stored:** the owner's name and available minutes, and every pet and task with its `id`, due date as an ISO string (e.g. `"2026-10-19"`), and completed status. Keeping ids means recurring tasks and "Mark done" still work after loading. Loaded tasks go through the same validation as new ones, so a hand-edited file with a bad priority or time is rejected instead of quietly causing wrong results.
+
+**Methods:** `Task.to_dict()` / `Task.from_dict()`, `Pet.to_dict()` / `Pet.from_dict()`, and `Owner.to_dict()` / `Owner.from_dict()` convert to and from plain dicts. `Owner.save_to_json(path)` writes the file (to a temporary file first, then swapped in, so a crash can't leave a half-written file), and `Owner.load_from_json(path)` is a classmethod that reads it back. Only the standard library (`json`) is used.
+
+**Files modified**
+
+| File | Change |
+|------|--------|
+| `pawpal_system.py` | `to_dict()` / `from_dict()` on `Task`, `Pet`, and `Owner`; `Owner.save_to_json()` and `Owner.load_from_json()`. |
+| `app.py` | Loads `data.json` when the session starts, saves after every change, and Reset deletes the file. |
+| `tests/test_pawpal.py` | Round-trip (pets, tasks, ids, dates, completed status), missing file returns `None`, a recurring task still recurs after loading, and invalid saved data is rejected. Tests use pytest's `tmp_path`, so they never touch the real `data.json`. |
+| `.gitignore` | Ignores `data.json` (and its temporary file) so personal data isn't committed. |
+| `diagrams/uml_final.mmd` | Adds the new methods. |
 
 ## 📐 UML
 

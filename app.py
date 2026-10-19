@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import streamlit as st
 
 from pawpal_system import Owner, Pet, Scheduler, Task
@@ -15,19 +17,32 @@ for their pet(s) based on constraints like time and priority.
 """
     )
 
-# --- Owner (stored once per browser session) ---------------------------------
+# --- Owner (loaded from data.json once per browser session) -----------------
+
+DATA_FILE = Path(__file__).with_name("data.json")
+
+
+def save() -> None:
+    """Write the owner, pets, and tasks to data.json after every change."""
+    st.session_state.owner.save_to_json(DATA_FILE)
+
 
 if "owner" not in st.session_state:
-    st.session_state.owner = Owner(name="Jordan", available_minutes=90)
+    try:
+        loaded = Owner.load_from_json(DATA_FILE)
+    except (ValueError, KeyError, TypeError) as e:
+        loaded = None
+        st.warning(f"Couldn't read {DATA_FILE.name} ({e}); starting fresh.")
+    st.session_state.owner = loaded or Owner(name="Jordan", available_minutes=90)
 
 owner: Owner = st.session_state.owner
 
 st.subheader("Owner")
 col1, col2 = st.columns(2)
 with col1:
-    owner.name = st.text_input("Owner name", value=owner.name, key="owner_name")
+    name = st.text_input("Owner name", value=owner.name, key="owner_name")
 with col2:
-    owner.available_minutes = int(
+    minutes = int(
         st.number_input(
             "Available minutes today",
             min_value=0,
@@ -37,8 +52,12 @@ with col2:
             on_change=lambda: st.session_state.pop("plan", None),  # budget changed: plan is stale
         )
     )
+if (name, minutes) != (owner.name, owner.available_minutes):
+    owner.name, owner.available_minutes = name, minutes
+    save()
 
-if st.button("Reset (clear owner, pets, and tasks)"):
+if st.button("Reset (clear owner, pets, tasks, and saved data)"):
+    DATA_FILE.unlink(missing_ok=True)
     st.session_state.clear()
     st.rerun()
 
@@ -63,6 +82,7 @@ with st.form("add_pet", clear_on_submit=True):
             owner.add_pet(
                 Pet(name=pet_name.strip(), species=species, breed=breed.strip(), age=int(age))
             )
+            save()
             st.success(f"Added {pet_name.strip()}.")
 
 if owner.pets:
@@ -113,6 +133,7 @@ if owner.pets:
                 st.error(str(e))
             else:
                 pets_by_id[pet_id].add_task(task)
+                save()
                 st.session_state.pop("plan", None)  # new task: plan is stale
                 when = f"at {task.time}" if task.time else "with no start time"
                 st.success(f"Added '{task.title}' for {pets_by_id[pet_id].name} {when}.")
@@ -176,6 +197,7 @@ if all_tasks:
             if st.form_submit_button("Mark done"):
                 pet, task = pending[done_id]
                 next_task = scheduler.mark_task_complete(pet.id, task.id)
+                save()
                 st.session_state.pop("plan", None)  # task finished: plan is stale
                 message = f"Marked '{task.title}' for {pet.name} done."
                 if next_task is not None:

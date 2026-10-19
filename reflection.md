@@ -92,7 +92,7 @@ I'm most satisfied with the scheduling logic and the test suite. The scheduler h
 
 **b. What you would improve**
 
-I'd make the planner overlap-aware, so it skips or suggests a new time for a task that clashes with one already scheduled instead of only warning. I'd also handle tasks that cross midnight, save data to a file so it survives a browser refresh, and add automated tests for the Streamlit UI.
+As extensions, I added `find_next_available_slot()`, which suggests a free time for each conflict (e.g., "Try moving Ear drops to 07:00"), and JSON persistence so pets and tasks survive restarts. One limitation: each slot suggestion is calculated separately, so two conflicting tasks can be told to move to the same slot. Next I'd make the planner overlap-aware so it actually reschedules tasks, handle tasks that cross midnight, and add automated tests for the Streamlit UI.
 
 **c. Key takeaway**
 

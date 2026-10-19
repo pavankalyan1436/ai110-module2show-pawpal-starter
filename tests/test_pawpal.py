@@ -1,3 +1,4 @@
+import json
 from datetime import date, timedelta
 
 import pytest
@@ -529,3 +530,70 @@ def test_explain_plan_suggests_a_new_time_for_each_conflict():
     # Walk and Ear drops both start inside Breakfast; Ear drops also inside Walk.
     assert "Try moving Walk to 08:00." in text
     assert text.count("Try moving Ear drops to 08:00.") == 2
+
+
+# --- JSON persistence --------------------------------------------------------
+
+def test_save_then_load_round_trips_pets_tasks_ids_dates_and_status(tmp_path):
+    path = tmp_path / "data.json"
+    owner = Owner("Jordan", available_minutes=75)
+    biscuit = Pet("Biscuit", "dog", breed="Golden Retriever", age=4)
+    luna = Pet("Luna", "cat")
+    walk = Task("Walk", 30, "high", "walk", time="07:30", frequency="daily", due_date=DAY)
+    done = Task("Vet", 60, "low", "appointment", due_date=date(2026, 12, 31))
+    done.mark_complete()
+    biscuit.add_task(walk)
+    biscuit.add_task(done)
+    luna.add_task(Task("Meds", 5, frequency="weekly", due_date=DAY - timedelta(days=3)))
+    owner.add_pet(biscuit)
+    owner.add_pet(luna)
+
+    owner.save_to_json(path)
+    loaded = Owner.load_from_json(path)
+
+    assert loaded == owner  # dataclass equality: every field of every pet and task
+    assert [p.id for p in loaded.pets] == [biscuit.id, luna.id]
+    assert [t.id for t in loaded.pets[0].tasks] == [walk.id, done.id]
+    assert loaded.pets[0].tasks[1].due_date == date(2026, 12, 31)
+    assert isinstance(loaded.pets[0].tasks[0].due_date, date)
+    assert [t.completed for _, t in loaded.get_all_tasks()] == [False, True, False]
+    assert not (tmp_path / "data.json.tmp").exists()
+
+
+def test_load_from_missing_file_returns_none(tmp_path):
+    assert Owner.load_from_json(tmp_path / "nope.json") is None
+
+
+def test_recurring_task_still_recurs_after_loading(tmp_path):
+    path = tmp_path / "data.json"
+    owner = Owner("Jordan")
+    pet = Pet("Biscuit", "dog")
+    walk = Task("Walk", 30, time="07:30", frequency="daily", due_date=DAY)
+    pet.add_task(walk)
+    owner.add_pet(pet)
+    owner.save_to_json(path)
+
+    loaded = Owner.load_from_json(path)
+    scheduler = Scheduler(loaded, day=DAY)
+    next_walk = scheduler.mark_task_complete(pet.id, walk.id)  # original ids still work
+
+    assert next_walk is not None
+    assert next_walk.due_date == DAY + timedelta(days=1)
+    assert len(loaded.pets[0].tasks) == 2
+
+    loaded.save_to_json(path)  # the new occurrence is saved too
+    assert len(Owner.load_from_json(path).pets[0].tasks) == 2
+
+
+def test_load_rejects_invalid_task_data(tmp_path):
+    path = tmp_path / "data.json"
+    owner = Owner("Jordan")
+    pet = Pet("Biscuit", "dog")
+    pet.add_task(Task("Walk", 30, due_date=DAY))
+    owner.add_pet(pet)
+    data = owner.to_dict()
+    data["pets"][0]["tasks"][0]["priority"] = "urgent"
+    path.write_text(json.dumps(data))
+
+    with pytest.raises(ValueError):
+        Owner.load_from_json(path)

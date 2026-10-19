@@ -11,6 +11,10 @@ classDiagram
         +remove_pet(pet_id: str) None
         +get_pet(pet_id: str) Optional~Pet~
         +get_all_tasks() list~PetTask~
+        +to_dict() dict
+        +from_dict(data: dict)$ Owner
+        +save_to_json(path: str = "data.json") None
+        +load_from_json(path: str = "data.json")$ Optional~Owner~
     }
 
     class Pet {
@@ -26,6 +30,8 @@ classDiagram
         +get_task(task_id: str) Optional~Task~
         +complete_task(task_id: str, completed_on: date) Optional~Task~
         +pending_tasks() list~Task~
+        +to_dict() dict
+        +from_dict(data: dict)$ Pet
     }
 
     class Task {
@@ -45,6 +51,8 @@ classDiagram
         +priority_rank() int
         +overlaps(other: Task) bool
         +next_occurrence(completed_on: date) Optional~Task~
+        +to_dict() dict
+        +from_dict(data: dict)$ Task
     }
 
     class Plan {
@@ -79,7 +87,10 @@ classDiagram
     Scheduler ..> Plan : generate_plan() builds / explain_plan() reads<br>find_next_available_slot() checks scheduled
     Plan o-- "*" Pet : in scheduled / skipped pairs
     Plan o-- "*" Task : in scheduled / skipped pairs
+    Owner ..> Pet : to_dict() / from_dict() for each pet
+    Pet ..> Task : to_dict() / from_dict() for each task
 
     note for Task "Validated on creation: duration_minutes > 0, priority in high/medium/low,<br>frequency in once/daily/weekly, time is zero-padded HH:MM or None.<br>start_minutes / end_minutes are read-only properties (minutes since midnight).<br>Known limitation: tasks running past midnight are not checked for overlaps."
     note for Scheduler "generate_plan(): incomplete tasks due on or before day, picked by priority<br>(shorter first on ties) within available_minutes, returned in time order.<br>conflicting_pairs(): skips completed and untimed tasks; compares only tasks<br>with the same due_date unless same_day=True (used for plan.scheduled,<br>where overdue tasks happen today). detect_conflicts() formats the pairs.<br>find_next_available_slot(): earliest HH:MM between day_start and day_end<br>that fits without overlapping timed tasks (default: today's plan), or None.<br>explain_plan() and the app use it to suggest a new time for the later task<br>in each conflict, leaving that task out so its own slot doesn't block it."
     note for Plan "skipped holds (Pet, Task, reason) tuples"
+    note for Owner "save_to_json() writes owner, pets, and tasks to data.json<br>(dates as ISO strings, ids kept). load_from_json() is a<br>classmethod (underlined = class-level) that returns None if the file is missing."
