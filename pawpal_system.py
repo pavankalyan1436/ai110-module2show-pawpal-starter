@@ -274,17 +274,30 @@ class Scheduler:
     ) -> list[str]:
         """Return a warning for each pair of timed tasks whose time ranges overlap.
 
+        See conflicting_pairs() for which tasks are compared.
+        """
+        return [
+            f"Conflict: {self._describe(p1, t1)} overlaps {self._describe(p2, t2)}"
+            for (p1, t1), (p2, t2) in self.conflicting_pairs(tasks, same_day)
+        ]
+
+    def conflicting_pairs(
+        self, tasks: list[tuple[Pet, Task]], same_day: bool = False
+    ) -> list[tuple[tuple[Pet, Task], tuple[Pet, Task]]]:
+        """Return each pair of timed tasks whose time ranges overlap, earlier task first.
+
         Only incomplete tasks due on the same date are compared, unless
         same_day is True: then every task is treated as happening on self.day
         (use this for plan.scheduled, where overdue tasks are done today).
         Back-to-back tasks (one ends exactly when the next starts) are not a
-        conflict, and untimed tasks are ignored. Warnings are in start-time order.
+        conflict, and untimed tasks are ignored. Pairs are in start-time order.
         """
         ordered = self.sort_by_time([(p, t) for p, t in tasks if not t.completed])
         return [
-            f"Conflict: {self._describe(p1, t1)} overlaps {self._describe(p2, t2)}"
-            for (p1, t1), (p2, t2) in combinations(ordered, 2)
-            if (same_day or t1.due_date == t2.due_date) and t1.overlaps(t2)
+            (first, second)
+            for first, second in combinations(ordered, 2)
+            if (same_day or first[1].due_date == second[1].due_date)
+            and first[1].overlaps(second[1])
         ]
 
     @staticmethod

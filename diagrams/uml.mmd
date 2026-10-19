@@ -56,7 +56,8 @@ classDiagram
         +sort_by_priority(tasks: list~tuple~Pet, Task~~) list~tuple~Pet, Task~~
         +filter_tasks(pet_id: str, pet_name: str, completed: bool, due_by: date) list~tuple~Pet, Task~~
         +mark_task_complete(pet_id: str, task_id: str) Task
-        +detect_conflicts(tasks: list~tuple~Pet, Task~~) list~str~
+        +detect_conflicts(tasks: list~tuple~Pet, Task~~, same_day: bool) list~str~
+        +conflicting_pairs(tasks: list~tuple~Pet, Task~~, same_day: bool) list~tuple~tuple, tuple~~
         +explain_plan(plan: Plan) str
     }
 
@@ -67,3 +68,6 @@ classDiagram
     Scheduler ..> Plan : produces
     Plan o-- Task : scheduled / skipped
     Scheduler ..> Task : orders / filters
+
+    note for Task "duration_minutes must be > 0; time is zero-padded HH:MM.<br>Times are minutes since midnight: a task running past midnight<br>is not checked against early-morning tasks (known limitation)."
+    note for Scheduler "conflicting_pairs() skips completed and untimed tasks and only<br>compares tasks due on the same date, unless same_day=True<br>(used for plan.scheduled, where overdue tasks happen today).<br>detect_conflicts() formats those pairs as warning strings."

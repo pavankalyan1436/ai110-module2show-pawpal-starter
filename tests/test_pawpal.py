@@ -220,6 +220,32 @@ def test_detect_conflicts_three_way_overlap_reports_every_pair():
     assert len(scheduler.detect_conflicts(scheduler.owner.get_all_tasks())) == 3
 
 
+def test_conflicting_pairs_returns_overlapping_pairs_earlier_task_first():
+    today = date(2026, 10, 19)
+    biscuit = Pet("Biscuit", "dog")
+    luna = Pet("Luna", "cat")
+    drops = Task("Ear drops", 5, time="07:45", due_date=today)
+    walk = Task("Walk", 30, time="07:30", due_date=today)                  # 07:30-08:00
+    overdue = Task("Brush", 10, time="07:50", due_date=today - timedelta(days=1))
+    done = Task("Breakfast", 10, time="07:40", due_date=today)
+    done.mark_complete()
+    luna.add_task(drops)  # added first, but starts later
+    biscuit.add_task(walk)
+    biscuit.add_task(overdue)
+    biscuit.add_task(done)
+    scheduler = Scheduler(make_owner(biscuit, luna), day=today)
+    tasks = scheduler.owner.get_all_tasks()
+
+    # Overdue Brush has a different due date; completed Breakfast is ignored.
+    assert scheduler.conflicting_pairs(tasks) == [((biscuit, walk), (luna, drops))]
+    # same_day treats every task as today, so Brush now clashes with Walk.
+    assert scheduler.conflicting_pairs(tasks, same_day=True) == [
+        ((biscuit, walk), (luna, drops)),
+        ((biscuit, walk), (biscuit, overdue)),
+    ]
+    assert scheduler.conflicting_pairs([]) == []
+
+
 def test_tasks_crossing_midnight_are_not_detected():
     # Known limitation: times are minutes since midnight with no wraparound, so a
     # task running past midnight never conflicts with an early-morning task, and

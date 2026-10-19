@@ -1,0 +1,84 @@
+classDiagram
+    %% Final UML: matches pawpal_system.py as built.
+    %% PetTask = tuple(Pet, Task), the pair Owner.get_all_tasks() returns.
+
+    class Owner {
+        <<dataclass>>
+        +str name
+        +int available_minutes = 120
+        +list~Pet~ pets
+        +add_pet(pet: Pet) None
+        +remove_pet(pet_id: str) None
+        +get_pet(pet_id: str) Optional~Pet~
+        +get_all_tasks() list~PetTask~
+    }
+
+    class Pet {
+        <<dataclass>>
+        +str id
+        +str name
+        +str species
+        +str breed
+        +int age
+        +list~Task~ tasks
+        +add_task(task: Task) None
+        +remove_task(task_id: str) None
+        +get_task(task_id: str) Optional~Task~
+        +complete_task(task_id: str, completed_on: date) Optional~Task~
+        +pending_tasks() list~Task~
+    }
+
+    class Task {
+        <<dataclass>>
+        +str id
+        +str title
+        +int duration_minutes
+        +str priority = "medium"
+        +str category = "general"
+        +Optional~str~ time
+        +str frequency = "once"
+        +date due_date = today
+        +bool completed = False
+        +start_minutes Optional~int~
+        +end_minutes Optional~int~
+        +mark_complete() None
+        +priority_rank() int
+        +overlaps(other: Task) bool
+        +next_occurrence(completed_on: date) Optional~Task~
+    }
+
+    class Plan {
+        <<dataclass>>
+        +list~PetTask~ scheduled
+        +list~tuple~ skipped
+        +int minutes_used
+    }
+
+    class Scheduler {
+        +Owner owner
+        +date day = today
+        +generate_plan() Plan
+        +sort_by_priority(tasks: list~PetTask~) list~PetTask~
+        +sort_by_time(tasks: list~PetTask~) list~PetTask~
+        +filter_tasks(pet_id, pet_name, completed, due_by) list~PetTask~
+        +mark_task_complete(pet_id: str, task_id: str) Optional~Task~
+        +detect_conflicts(tasks: list~PetTask~, same_day: bool = False) list~str~
+        +conflicting_pairs(tasks: list~PetTask~, same_day: bool = False) list~tuple~
+        +explain_plan(plan: Plan) str
+        -_describe(pet: Pet, task: Task)$ str
+    }
+
+    Owner "1" o-- "*" Pet : owns
+    Pet "1" *-- "*" Task : has
+    Pet ..> Task : complete_task() calls mark_complete() + next_occurrence()
+    Task ..> Task : next_occurrence() copies / overlaps() compares
+    Scheduler "1" --> "1" Owner : reads get_all_tasks() / get_pet()
+    Scheduler ..> Pet : mark_task_complete() calls complete_task()
+    Scheduler ..> Task : conflicting_pairs() calls overlaps()
+    Scheduler ..> Plan : generate_plan() builds / explain_plan() reads
+    Plan o-- "*" Pet : in scheduled / skipped pairs
+    Plan o-- "*" Task : in scheduled / skipped pairs
+
+    note for Task "Validated on creation: duration_minutes > 0, priority in high/medium/low,<br>frequency in once/daily/weekly, time is zero-padded HH:MM or None.<br>start_minutes / end_minutes are read-only properties (minutes since midnight).<br>Known limitation: tasks running past midnight are not checked for overlaps."
+    note for Scheduler "generate_plan(): incomplete tasks due on or before day, picked by priority<br>(shorter first on ties) within available_minutes, returned in time order.<br>conflicting_pairs(): skips completed and untimed tasks; compares only tasks<br>with the same due_date unless same_day=True (used for plan.scheduled,<br>where overdue tasks happen today). detect_conflicts() formats the pairs."
+    note for Plan "skipped holds (Pet, Task, reason) tuples"

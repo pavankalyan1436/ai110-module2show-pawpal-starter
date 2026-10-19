@@ -2,6 +2,17 @@
 
 You are building **PawPal+**, a Streamlit app that helps a pet owner plan care tasks for their pet.
 
+## ✨ Features
+
+| Feature | What it does | Method(s) |
+|---------|--------------|-----------|
+| **Sorting by time** | Lists tasks by start time, untimed tasks last; ties go high → low priority, then shorter first. | `Scheduler.sort_by_time()` (`sort_by_priority()` for the planning order) |
+| **Filtering** | Shows tasks for one pet (by id or case-insensitive name), by completion status, and/or due on or before a date. | `Scheduler.filter_tasks()` |
+| **Daily / weekly recurrence** | Completing a recurring task adds its next occurrence, 1 or 7 days after the due date or the completion day, whichever is later. Completing twice does nothing. | `Scheduler.mark_task_complete()` → `Pet.complete_task()` → `Task.next_occurrence()` |
+| **Overlap conflict warnings** | Flags every pair of timed tasks whose time ranges overlap (back-to-back is fine). Completed and untimed tasks are ignored; `same_day=True` treats the whole plan as today so overdue tasks are checked too. | `Task.overlaps()`, `Scheduler.conflicting_pairs()`, `Scheduler.detect_conflicts()` |
+| **Time-budget planning with skip reasons** | Picks today's and overdue tasks by priority until `available_minutes` runs out, skips what doesn't fit with a reason, and keeps trying smaller tasks. | `Scheduler.generate_plan()` → `Plan`, `Scheduler.explain_plan()` |
+| **Input validation** | Rejects non-positive durations, unknown priorities/frequencies, and times that aren't zero-padded `HH:MM`. | `Task.__post_init__()` |
+
 ## Scenario
 
 A busy pet owner needs help staying consistent with pet care. They want an assistant that can:
@@ -60,23 +71,148 @@ Run the CLI demo with:
 python main.py
 ```
 
-## 🖥️ Sample Output
+## 📸 Demo Walkthrough
 
-Output of `python main.py`:
+Start the app with `streamlit run app.py`.
+
+### Main UI features
+
+- **Owner:** set the owner's name and how many minutes they have today. A reset button clears everything.
+- **Pets:** add a pet (name, species, breed, age); all pets are listed in a table.
+- **Tasks:** add a task for a pet with a title, duration, optional start time, priority, and frequency (once, daily, weekly). Invalid input shows an error instead of crashing.
+- **Task list:** a table sorted by time, with a **Show tasks for** dropdown ("All" or one pet) and a **Hide completed** checkbox.
+- **Mark done:** pick a pending task and mark it done. For a recurring task, the app says when the next one is due.
+- **Build Schedule:** generates today's plan and keeps it on screen while you use the rest of the page. Adding a task, marking one done, or changing the time budget clears it so you never see an out-of-date plan.
+
+### Example workflow
+
+1. **Add the owner.** Enter "Jordan" and set available minutes to 90.
+2. **Add pets.** Add Biscuit (dog, Golden Retriever, 4) and Luna (cat).
+3. **Add tasks.** For Biscuit: "Morning walk", 30 min, 07:30, high, daily. For Luna: "Ear drops", 5 min, 07:45, high. Add a few more, including a long low-priority task such as a 60-minute grooming.
+4. **Generate the schedule.** Click **Generate schedule**. A green summary appears, e.g. "7 tasks scheduled · 90 of 90 min used", followed by the schedule table.
+5. **Mark a task done.** Mark Biscuit's "Morning walk" done. The app confirms it and says the next walk is due tomorrow.
+6. **See the recurrence.** The task list now shows the completed walk and a new walk due tomorrow. Tick **Hide completed** to see only what's left, and pick a pet in the dropdown to narrow the list.
+
+### Scheduler behaviors you'll see
+
+- **Sorting:** the schedule is chosen by priority but shown by start time, with untimed tasks at the bottom as "Anytime".
+- **Skipped tasks:** tasks that don't fit the time budget are listed under a **Skipped** expander with the reason, e.g. "not enough time (needs 60 min, 0 min left)".
+- **Conflict warnings:** each overlap gets its own warning, e.g. "⚠️ Morning walk (Biscuit) overlaps Ear drops (Luna) at 07:45. Consider moving one."
+
+### CLI demo
+
+`python main.py` runs the same scenario in the terminal: it lists the tasks as added, sorted by time, and filtered to one pet, then prints the schedule, the plan explanation, conflicts, and a recurring task being completed. Example output (dates depend on the day you run it):
 
 ```
-Today's Schedule (Sunday, October 18, 2026)
+All tasks (as added)
+--------------------
+  Anytime   Biscuit  Fetch session      due 2026-10-19  [todo]
+  8:00 AM   Biscuit  Breakfast          due 2026-10-19  [todo]
+  7:30 AM   Biscuit  Morning walk       due 2026-10-19  [todo]
+  2:00 PM   Biscuit  Full grooming      due 2026-10-19  [todo]
+  6:00 PM   Luna     Clean litter box   due 2026-10-19  [todo]
+  9:00 AM   Luna     Thyroid meds       due 2026-10-19  [todo]
+  8:15 AM   Luna     Breakfast          due 2026-10-19  [todo]
+  7:45 AM   Luna     Ear drops          due 2026-10-19  [todo]
+
+All tasks (sorted by time)
+--------------------------
+  7:30 AM   Biscuit  Morning walk       due 2026-10-19  [todo]
+  7:45 AM   Luna     Ear drops          due 2026-10-19  [todo]
+  8:00 AM   Biscuit  Breakfast          due 2026-10-19  [todo]
+  8:15 AM   Luna     Breakfast          due 2026-10-19  [todo]
+  9:00 AM   Luna     Thyroid meds       due 2026-10-19  [todo]
+  2:00 PM   Biscuit  Full grooming      due 2026-10-19  [todo]
+  6:00 PM   Luna     Clean litter box   due 2026-10-19  [todo]
+  Anytime   Biscuit  Fetch session      due 2026-10-19  [todo]
+
+Luna's tasks only
+-----------------
+  7:45 AM   Luna     Ear drops          due 2026-10-19  [todo]
+  8:15 AM   Luna     Breakfast          due 2026-10-19  [todo]
+  9:00 AM   Luna     Thyroid meds       due 2026-10-19  [todo]
+  6:00 PM   Luna     Clean litter box   due 2026-10-19  [todo]
+
+Today's Schedule (Monday, October 19, 2026)
 ===========================================
 Time       Pet       Task                    Duration   Priority
 ----------------------------------------------------------------
 7:30 AM    Biscuit   Morning walk (daily)    30 min     High
+7:45 AM    Luna      Ear drops               5 min      High
 8:00 AM    Biscuit   Breakfast               10 min     High
 8:15 AM    Luna      Breakfast               5 min      High
 9:00 AM    Luna      Thyroid meds            5 min      High
 6:00 PM    Luna      Clean litter box        15 min     Medium
 Anytime    Biscuit   Fetch session           20 min     Medium
 ----------------------------------------------------------------
-Total: 85 of 90 min
+Total: 90 of 90 min
 
-Plan for 2026-10-18: 85 of 90 min used
-Tasks were picked by
+Plan for 2026-10-19: 90 of 90 min used
+Tasks were picked by priority (high first, shorter first on ties), then listed by start time (untimed last).
+
+Scheduled:
+  07:30  Morning walk (Biscuit) - 30 min [high]
+  07:45  Ear drops (Luna) - 5 min [high]
+  08:00  Breakfast (Biscuit) - 10 min [high]
+  08:15  Breakfast (Luna) - 5 min [high]
+  09:00  Thyroid meds (Luna) - 5 min [high]
+  18:00  Clean litter box (Luna) - 15 min [medium]
+  --:--  Fetch session (Biscuit) - 20 min [medium]
+
+Skipped:
+  Full grooming (Biscuit) [low]: not enough time (needs 60 min, 0 min left)
+
+Warnings:
+  Conflict: Morning walk (Biscuit, 07:30-08:00) overlaps Ear drops (Luna, 07:45-07:50)
+
+Conflict check (today's incomplete tasks)
+-----------------------------------------
+  Conflict: Morning walk (Biscuit, 07:30-08:00) overlaps Ear drops (Luna, 07:45-07:50)
+
+Completed 'Morning walk' for Biscuit.
+Next 'Morning walk' is due 2026-10-20.
+
+Incomplete tasks
+----------------
+  7:30 AM   Biscuit  Morning walk       due 2026-10-20  [todo]
+  7:45 AM   Luna     Ear drops          due 2026-10-19  [todo]
+  8:00 AM   Biscuit  Breakfast          due 2026-10-19  [todo]
+  8:15 AM   Luna     Breakfast          due 2026-10-19  [todo]
+  9:00 AM   Luna     Thyroid meds       due 2026-10-19  [todo]
+  2:00 PM   Biscuit  Full grooming      due 2026-10-19  [todo]
+  6:00 PM   Luna     Clean litter box   due 2026-10-19  [todo]
+  Anytime   Biscuit  Fetch session      due 2026-10-19  [todo]
+```
+
+## 🧪 Testing PawPal+
+
+```bash
+# Run the full test suite:
+pytest
+
+# Run with coverage (needs `pip install pytest-cov`):
+pytest --cov
+```
+
+The 46 tests in `tests/test_pawpal.py` cover sorting (time order, tie-breaks), filtering, plan generation (exact fit, skip-and-continue, overdue/future/completed tasks, empty inputs, zero budget), recurrence (daily, weekly, one-off, completing twice, early and late completion, month/year rollover), conflict detection (overlaps, back-to-back, same start time, three-way, other days, `same_day`), and input validation. Scheduling tests use fixed dates so they don't depend on when they run.
+
+Sample test output:
+
+```
+tests/test_pawpal.py ..............................................      [100%]
+
+============================== 46 passed in 0.02s ==============================
+```
+
+## 📐 Smarter Scheduling
+
+| Feature | Method(s) | Notes |
+|---------|-----------|-------|
+| Task sorting | `Scheduler.sort_by_priority()`, `Scheduler.sort_by_time()` | Planning picks by priority (shorter first on ties); the plan is shown by start time, untimed last. |
+| Filtering | `Scheduler.filter_tasks()`, `Scheduler.generate_plan()` | Filter by pet, completion, or due date. Planning skips tasks that don't fit the remaining time and keeps trying smaller ones. |
+| Conflict handling | `Task.overlaps()`, `Scheduler.conflicting_pairs()`, `Scheduler.detect_conflicts()` | Overlapping time ranges are warned about, not blocked. Back-to-back tasks are fine. Known limitation: tasks running past midnight aren't checked. |
+| Recurring tasks | `Task.next_occurrence()`, `Pet.complete_task()`, `Scheduler.mark_task_complete()` | Daily = +1 day, weekly = +7 days, counted from the later of the due date and the completion day. |
+
+## 📐 UML
+
+The final class diagram is in [`diagrams/uml_final.mmd`](diagrams/uml_final.mmd). It shows the five classes (`Owner`, `Pet`, `Task`, `Plan`, `Scheduler`), how they call each other (for example `Scheduler.mark_task_complete()` → `Pet.complete_task()` → `Task.next_occurrence()`, and `Scheduler.conflicting_pairs()` → `Task.overlaps()`), and notes on validation, the `same_day` rule, and the midnight limitation. GitHub renders `.mmd` files as text; paste the file into [mermaid.live](https://mermaid.live) to view it as a diagram. The original design is kept in [`diagrams/uml.mmd`](diagrams/uml.mmd).
