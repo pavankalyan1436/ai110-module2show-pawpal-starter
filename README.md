@@ -213,6 +213,29 @@ tests/test_pawpal.py ..............................................      [100%]
 | Conflict handling | `Task.overlaps()`, `Scheduler.conflicting_pairs()`, `Scheduler.detect_conflicts()` | Overlapping time ranges are warned about, not blocked. Back-to-back tasks are fine. Known limitation: tasks running past midnight aren't checked. |
 | Recurring tasks | `Task.next_occurrence()`, `Pet.complete_task()`, `Scheduler.mark_task_complete()` | Daily = +1 day, weekly = +7 days, counted from the later of the due date and the completion day. |
 
+## ⭐ Priority-Based Scheduling
+
+`Scheduler.generate_plan()` builds the day's plan in two steps:
+
+1. **Pick by priority.** It takes every incomplete task due today or earlier and sorts them high → medium → low, with shorter tasks first when priorities tie (`sort_by_priority()`). It then goes down that list and adds each task that still fits in the owner's `available_minutes`. A task that doesn't fit is skipped with a reason, and the scheduler keeps going in case a smaller task still fits.
+2. **List by time.** The chosen tasks are re-sorted by start time (`sort_by_time()`), with untimed tasks last, so the plan reads like a day.
+
+Priority decides *what* makes the cut and time decides *the order you see*. In the `python main.py` demo (90-minute budget), the five high-priority tasks take 55 minutes and the two medium ones take the remaining 35. The low-priority 60-minute grooming is skipped, even though its 2:00 PM start comes before the 6:00 PM litter box:
+
+```
+Scheduled:
+  07:30  Morning walk (Biscuit) - 30 min [high]
+  07:45  Ear drops (Luna) - 5 min [high]
+  08:00  Breakfast (Biscuit) - 10 min [high]
+  08:15  Breakfast (Luna) - 5 min [high]
+  09:00  Thyroid meds (Luna) - 5 min [high]
+  18:00  Clean litter box (Luna) - 15 min [medium]
+  --:--  Fetch session (Biscuit) - 20 min [medium]
+
+Skipped:
+  Full grooming (Biscuit) [low]: not enough time (needs 60 min, 0 min left)
+```
+
 ## 📐 UML
 
 The final class diagram is in [`diagrams/uml_final.mmd`](diagrams/uml_final.mmd). It shows the five classes (`Owner`, `Pet`, `Task`, `Plan`, `Scheduler`), how they call each other (for example `Scheduler.mark_task_complete()` → `Pet.complete_task()` → `Task.next_occurrence()`, and `Scheduler.conflicting_pairs()` → `Task.overlaps()`), and notes on validation, the `same_day` rule, and the midnight limitation. GitHub renders `.mmd` files as text; paste the file into [mermaid.live](https://mermaid.live) to view it as a diagram. The original design is kept in [`diagrams/uml.mmd`](diagrams/uml.mmd).
