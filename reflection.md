@@ -52,13 +52,13 @@ I chose not to apply the AI's suggestions about overlap detection, plan ordering
 
 **a. How you used AI**
 
-- How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
-- What kinds of prompts or questions were most helpful?
+I used AI at every stage: brainstorming the UML, generating class skeletons, reviewing the design for missing relationships, implementing the methods, writing the `main.py` demo, and drafting tests. The most helpful prompts were specific ones that listed exact requirements — for example, "Scheduler must only read from `owner.get_all_tasks()`" and "skip tasks that don't fit, don't break." Vague prompts got vague results; precise prompts got code I could actually check.
 
 **b. Judgment and verification**
 
-- Describe one moment where you did not accept an AI suggestion as-is.
-- How did you evaluate or verify what the AI suggested?
+The AI's design review gave 12 suggestions, and I didn't accept all of them. I applied five (ids, `complete_task`, `Plan`, validation, removing the unused `preferences`) and deferred overlap detection, plan ordering, and `filter_tasks` changes to the algorithm phase to keep the skeleton focused. The AI also went slightly beyond what I asked — it wrote real validation code instead of a stub — and I kept that after confirming it rejected bad inputs like `"High"` and `"9:00"`. It also caught a mistake: I had renamed the diagram to `uml_draft.mmd`, but the starter repo expected `uml.mmd`, so I renamed it back.
+
+I verified the AI's code by running `main.py` and checking the math by hand (scheduled tasks add up to 85 of 90 minutes, so the 60-minute grooming was correctly skipped), and by running `pytest` (2 passed).
 
 ---
 

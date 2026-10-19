@@ -42,53 +42,41 @@ pip install -r requirements.txt
 6. Connect your logic to the Streamlit UI in `app.py`.
 7. Refine UML so it matches what you actually built.
 
-## 🖥️ Sample Output
+## 🧩 Implementation Summary
 
-Paste a sample of your app's CLI or Streamlit output here so a reader can see what a generated plan looks like:
+All backend logic lives in `pawpal_system.py`. The classes work together like this: **Owner → Pets → Tasks**, and the **Scheduler** reads from the Owner to produce a **Plan**.
 
-```
-# e.g.:
-# Daily plan for Biscuit (Golden Retriever):
-#   08:00 — Morning walk (30 min) [priority: high]
-#   09:00 — Feeding (10 min) [priority: high]
-#   ...
-```
+| Class | What it does |
+|-------|--------------|
+| `Task` | One care activity (title, duration, priority, optional `HH:MM` time, frequency, due date, completed). Validates its own values, can `mark_complete()`, and creates its `next_occurrence()` for daily/weekly tasks. |
+| `Pet` | Stores pet details and its list of tasks. `add_task()`, `remove_task()`, `get_task()`, and `complete_task()`, which marks a task done and adds the next occurrence if it recurs (safe to call twice). |
+| `Owner` | Stores the owner's name, daily time budget (`available_minutes`), and pets. `get_all_tasks()` returns every `(pet, task)` pair across all pets. |
+| `Plan` | The scheduler's result: `scheduled` tasks, `skipped` tasks with a reason, and `minutes_used`. |
+| `Scheduler` | The "brain." Gets tasks only through `owner.get_all_tasks()`, keeps tasks due today (or overdue) that aren't done, picks them by priority until the time budget runs out, orders the result by start time, flags same-time conflicts, and explains the plan. |
 
-## 🧪 Testing PawPal+
+Run the CLI demo with:
 
 ```bash
-# Run the full test suite:
-pytest
-
-# Run with coverage:
-pytest --cov
+python main.py
 ```
 
-Sample test output:
+## 🖥️ Sample Output
+
+Output of `python main.py`:
 
 ```
-# Paste your pytest output here
-```
+Today's Schedule (Sunday, October 18, 2026)
+===========================================
+Time       Pet       Task                    Duration   Priority
+----------------------------------------------------------------
+7:30 AM    Biscuit   Morning walk (daily)    30 min     High
+8:00 AM    Biscuit   Breakfast               10 min     High
+8:15 AM    Luna      Breakfast               5 min      High
+9:00 AM    Luna      Thyroid meds            5 min      High
+6:00 PM    Luna      Clean litter box        15 min     Medium
+Anytime    Biscuit   Fetch session           20 min     Medium
+----------------------------------------------------------------
+Total: 85 of 90 min
 
-## 📐 Smarter Scheduling
-
-> Fill in once you've implemented scheduling logic.
-
-| Feature | Method(s) | Notes |
-|---------|-----------|-------|
-| Task sorting | | e.g., by priority, duration |
-| Filtering | | e.g., skip tasks if time runs out |
-| Conflict handling | | e.g., overlapping time slots |
-| Recurring tasks | | e.g., daily vs. weekly |
-
-## 📸 Demo Walkthrough
-
-Describe your app in numbered steps so a reader can follow along without watching a video:
-
-1. <!-- Describe this step -->
-2. <!-- Describe this step -->
-3. <!-- Describe this step -->
-4. <!-- Describe this step -->
-5. <!-- Add more steps as needed -->
-
-**Screenshot or video** *(optional)*: <!-- Insert a screenshot or link to a demo video here -->
+Plan for 2026-10-18: 85 of 90 min used
+Tasks were picked by
